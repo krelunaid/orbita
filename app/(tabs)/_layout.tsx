@@ -36,7 +36,7 @@ export default function TabLayout() {
           title: it.catalogo,
           tabBarIcon: ({ color }) => (
             <SymbolView
-              name={{ ios: 'list.star', android: 'format-list-bulleted', web: 'list' }}
+              name={{ ios: 'list.star', android: 'format_list_bulleted', web: 'list' }}
               tintColor={color}
               size={26}
             />

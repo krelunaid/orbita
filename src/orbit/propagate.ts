@@ -18,6 +18,7 @@ export function propagateNow(record: TleRecord, when = new Date()): SatSnapshot 
   try {
     const satrec = satellite.twoline2satrec(record.line1, record.line2);
     const pv = satellite.propagate(satrec, when);
+    if (!pv) return base;
     const position = pv.position;
     const velocity = pv.velocity;
     if (!position || !velocity) return base;

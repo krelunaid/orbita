@@ -1,46 +1,70 @@
 # Orbita
 
-App **iPhone** in Expo + React Native + TypeScript. Mostra una Terra interattiva e satelliti **reali**, con posizioni propagate **adesso** da TLE pubblici.
+App **iPhone** nativa (Expo + React Native + TypeScript). Mostra una Terra interattiva e satelliti **reali**, con posizioni propagate **adesso** da TLE pubblici.
 
-Non è un sito web. Non c’è Next.js. Questa passata **non** carica l’app sull’App Store.
+Non è un sito web. Non c’è Next.js. Non si apre da Expo Go né da un tunnel `exp.direct`.
 
-Bundle id: `it.kreluna.orbita`
+Bundle id: `it.kreluna.orbita`  
+Nome: **Orbita** · slug EAS: **orbita**
+
+## Come la apre Andrea (il prodotto)
+
+Orbita è un’app installata sul telefono via **TestFlight**, costruita con **EAS**.
+
+Serve: account Expo, Apple Developer Program, Node 20+.
+
+```bash
+git clone https://github.com/krelunaid/orbita.git
+cd orbita
+npm install
+npx eas-cli login
+npx eas-cli init          # collega il progetto Expo (slug orbita) se manca extra.eas.projectId
+```
+
+Build iOS di prova (firma store, da caricare su TestFlight):
+
+```bash
+npx eas-cli build --platform ios --profile preview
+```
+
+Invio su App Store Connect / TestFlight (dal Mac di Andrea, con login Apple — non da questa VM):
+
+```bash
+npx eas-cli submit --platform ios --profile preview
+```
+
+Poi su iPhone: app **TestFlight** → Orbita.
+
+Profilo `production` (stesso bundle, canale production):
+
+```bash
+npx eas-cli build --platform ios --profile production
+npx eas-cli submit --platform ios --profile production
+```
+
+Questa passata **non** carica l’app sull’App Store e non fa login Apple.
+
+`eas.json` definisce i profili iOS `preview` e `production` (distribution store / TestFlight) e un profilo `development` per un dev client. Expo Go **non** è il prodotto: SDK 57 e il client App Store spesso non coincidono, e il tunnel `exp://` / `exp.direct` non è un’installazione.
 
 ## Cosa fa
 
-- Globo scuro, ruotabile (trascina) e con zoom (pizzico)
+- Globo scuro sempre visibile al primo avvio (trascina / pizzico); i satelliti arrivano sopra
+- Se i TLE falliscono: messaggio in italiano e pulsante **Riprova**
 - Cataloghi CelesTrak: `stations`, `visual`, `weather`, `gps-ops`, `galileo`, `science`
-- Se CelesTrak non risponde: SatNOGS DB, poi `tle.ivanstanojevic.me`
+- ISS (NORAD 25544) chiesta per prima e in testa al catalogo
+- Se CelesTrak non risponde: SatNOGS DB (solo oggetti scelti, non il dump intero), poi `tle.ivanstanojevic.me`
 - Niente dump Starlink, niente Space-Track
 - Massimo ~280 oggetti
 - Schermata Info con attribuzione e disclaimer (niente affiliazione NASA/DoD)
 
 Interfaccia in italiano.
 
-## Provala su iPhone con Expo Go
+## Sviluppo locale (simulatore / Metro)
 
-1. Sul Mac o PC clona il repo e installa le dipendenze (Node 20+):
-
-   ```bash
-   git clone https://github.com/krelunaid/orbita.git
-   cd orbita
-   npm install
-   npx expo start
-   ```
-
-2. Sul telefono installa **Expo Go** dall’App Store. L’SDK del progetto è **Expo 57**: serve una Expo Go compatibile con SDK 57.
-
-3. iPhone e computer sulla **stessa rete Wi‑Fi**.
-
-4. Inquadra il QR code:
-   - Fotocamera iOS → apre Expo Go
-   - oppure apri Expo Go → *Scan QR code*
-
-5. Al primo avvio l’app scarica i TLE (serve internet). Li tiene in cache circa 2 ore, come da etichetta d’uso CelesTrak.
-
-Se il QR non apre il progetto, nel terminale premi `s` per inviare il link, oppure usa lo stesso tunnel (`npx expo start --tunnel`) se il Wi‑Fi isola i client.
-
-Sviluppo su simulatore iOS (solo macOS): `npx expo start --ios`.
+```bash
+npm start                 # Metro
+npx expo run:ios          # nativo, solo macOS — non Expo Go
+```
 
 ## Script
 

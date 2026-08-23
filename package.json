@@ -12,12 +12,15 @@
     "ios": "expo start --ios",
     "android": "expo start --android",
     "typecheck": "tsc --noEmit",
-    "check:orbit": "node scripts/check-orbit.mjs"
+    "check:orbit": "node scripts/check-orbit.mjs",
+    "eas:preview": "eas build --platform ios --profile preview",
+    "eas:production": "eas build --platform ios --profile production"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.15",
     "expo-constants": "~57.0.13",
+    "expo-dev-client": "~57.0.14",
     "expo-font": "~57.0.1",
     "expo-haptics": "~57.0.1",
     "expo-linking": "~57.0.7",

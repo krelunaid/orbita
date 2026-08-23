@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { loadPublicTle } from '../orbit/fetchTle';
+import { fetchIssRecord, loadPublicTle } from '../orbit/fetchTle';
+import { isIssRecord } from '../orbit/iss';
 import { orbitTrack, propagateMany } from '../orbit/propagate';
 import type { CatalogState, GroupId, SatSnapshot, TleRecord } from '../types';
 
@@ -36,7 +37,6 @@ async function readCache(): Promise<CatalogState | null> {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CatalogState;
     if (!parsed?.records?.length || !parsed.fetchedAt) return null;
-    if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return { ...parsed, cached: true };
     return { ...parsed, cached: true };
   } catch {
     return null;
@@ -67,11 +67,22 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
     'altro',
   ]);
   const [query, setQuery] = useState('');
+  const catalogRef = useRef<CatalogState | null>(null);
+  catalogRef.current = catalog;
 
   const applyCatalog = useCallback((next: CatalogState) => {
     setCatalog(next);
+    catalogRef.current = next;
     setSnapshots(propagateMany(next.records));
     setError(null);
+  }, []);
+
+  const selectIssIfNeeded = useCallback((records: TleRecord[]) => {
+    setSelectedId((prev) => {
+      if (prev != null) return prev;
+      const iss = records.find(isIssRecord);
+      return iss ? iss.noradId : prev;
+    });
   }, []);
 
   const refresh = useCallback(
@@ -83,34 +94,52 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
           const cached = await readCache();
           if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
             applyCatalog(cached);
+            selectIssIfNeeded(cached.records);
             setLoading(false);
             return;
           }
-          if (cached) applyCatalog(cached);
+          if (cached) {
+            applyCatalog(cached);
+            selectIssIfNeeded(cached.records);
+          }
         }
-        const fresh = await loadPublicTle();
+
+        const seed: TleRecord[] = [];
+        if (!catalogRef.current?.records.length) {
+          const iss = await fetchIssRecord();
+          if (iss) {
+            seed.push(iss);
+            applyCatalog({
+              records: [iss],
+              fetchedAt: Date.now(),
+              source: iss.source,
+              cached: false,
+            });
+            selectIssIfNeeded([iss]);
+          }
+        }
+
+        const fresh = await loadPublicTle(seed);
         applyCatalog(fresh);
+        selectIssIfNeeded(fresh.records);
         await writeCache(fresh);
       } catch (err) {
-        const cached = catalog ?? (await readCache());
+        const cached = catalogRef.current ?? (await readCache());
         if (cached) {
           applyCatalog(cached);
-          setError(err instanceof Error ? err.message : 'Errore di rete');
-        } else {
-          setError(err instanceof Error ? err.message : 'Errore di rete');
+          selectIssIfNeeded(cached.records);
         }
+        setError(err instanceof Error ? err.message : 'Errore di rete');
       } finally {
         setLoading(false);
       }
     },
-    [applyCatalog, catalog],
+    [applyCatalog, selectIssIfNeeded],
   );
 
   useEffect(() => {
     void refresh(false);
-    // first load only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     if (!catalog?.records.length) return;

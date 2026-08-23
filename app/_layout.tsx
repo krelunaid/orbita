@@ -29,19 +29,17 @@ const navTheme = {
 };
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
+  const [loaded, fontError] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
   useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+    if (loaded || fontError) {
+      void SplashScreen.hideAsync();
+    }
+  }, [loaded, fontError]);
 
-  useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
-  }, [loaded]);
-
-  if (!loaded) return null;
+  if (!loaded && !fontError) return null;
 
   return (
     <SatellitesProvider>

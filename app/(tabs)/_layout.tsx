@@ -21,39 +21,21 @@ export default function TabLayout() {
         name="index"
         options={{
           title: it.globo,
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{ ios: 'globe.europe.africa', android: 'public', web: 'public' }}
-              tintColor={color}
-              size={26}
-            />
-          ),
+          tabBarIcon: ({ color }) => <SymbolView name="globe" tintColor={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="catalogo"
         options={{
           title: it.catalogo,
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{ ios: 'list.star', android: 'format_list_bulleted', web: 'list' }}
-              tintColor={color}
-              size={26}
-            />
-          ),
+          tabBarIcon: ({ color }) => <SymbolView name="list.bullet" tintColor={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="info"
         options={{
           title: it.info,
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-              tintColor={color}
-              size={26}
-            />
-          ),
+          tabBarIcon: ({ color }) => <SymbolView name="info.circle" tintColor={color} size={26} />,
         }}
       />
     </Tabs>

@@ -7,11 +7,17 @@
     "icon": "./assets/images/icon.png",
     "scheme": "orbita",
     "userInterfaceStyle": "dark",
+    "platforms": ["ios", "android"],
     "ios": {
       "bundleIdentifier": "it.kreluna.orbita",
       "supportsTablet": true,
+      "buildNumber": "1",
       "infoPlist": {
-        "CFBundleDisplayName": "Orbita"
+        "CFBundleDisplayName": "Orbita",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
@@ -34,6 +40,9 @@
         }
       ]
     ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "experiments": {
       "typedRoutes": true
     }

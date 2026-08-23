@@ -7,6 +7,7 @@ export const it = {
   catalogo: 'Catalogo',
   info: 'Info',
   aggiorna: 'Aggiorna',
+  riprova: 'Riprova',
   caricamento: 'Scarico i TLE pubblici…',
   erroreRete:
     'Non riesco a scaricare i TLE. Controlla la rete e riprova. Nessun dato Space-Track.',
@@ -39,7 +40,7 @@ export const it = {
     'Orbita è un’app iPhone: un globo interattivo e le posizioni di satelliti reali, calcolate adesso dai Two-Line Elements (TLE) pubblici. Non è un sito web.',
   aboutDati: 'Dati orbitali',
   aboutDatiBody:
-    'I TLE arrivano da cataloghi pubblici, in quest’ordine: CelesTrak (gruppi stations, visual, weather, gps-ops, galileo, science), poi SatNOGS DB, poi tle.ivanstanojevic.me. Non usiamo Space-Track. Non scarichiamo l’intera costellazione Starlink: il catalogo è limitato a poche centinaia di oggetti.',
+    'I TLE arrivano da cataloghi pubblici, in quest’ordine: CelesTrak (gruppi stations, visual, weather, gps-ops, galileo, science), poi SatNOGS DB (solo oggetti scelti, non il dump intero), poi tle.ivanstanojevic.me. L’ISS (NORAD 25544) viene chiesta per prima. Non usiamo Space-Track. Non scarichiamo l’intera costellazione Starlink: il catalogo è limitato a poche centinaia di oggetti.',
   aboutProp: 'Propagazione',
   aboutPropBody:
     'Le posizioni sono propagate all’istante corrente con il modello SGP4 (libreria satellite.js). I TLE pubblici invecchiano: quota, latitudine e longitudine sono stime, non un tracking operativo.',
@@ -57,7 +58,8 @@ export const it = {
   aboutPrivacy: 'Privacy',
   aboutPrivacyBody:
     'L’app chiede i TLE in HTTPS alle fonti sopra. Non c’è account, non c’è analytics di terze parti in questo codice.',
-  expoGoHint: 'Aprila su iPhone con Expo Go — vedi il README del repo.',
+  howToOpen:
+    'Orbita è un’app nativa (bundle it.kreluna.orbita). Su iPhone si apre da TestFlight dopo un build EAS, non da un sito e non da Expo Go.',
 } as const;
 
 export function groupLabel(id: GroupId): string {

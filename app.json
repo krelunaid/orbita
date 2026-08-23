@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Orbita",
+    "slug": "orbita",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "orbita",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "it.kreluna.orbita",
+      "supportsTablet": true,
+      "infoPlist": {
+        "CFBundleDisplayName": "Orbita"
+      }
+    },
+    "android": {
+      "package": "it.kreluna.orbita",
+      "adaptiveIcon": {
+        "backgroundColor": "#05070F",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#05070F"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

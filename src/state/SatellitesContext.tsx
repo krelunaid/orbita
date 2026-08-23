@@ -1,17 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { fetchIssRecord, loadPublicTle, resetTleCircuit } from '../orbit/fetchTle';
-import { isIssRecord } from '../orbit/iss';
+import { fetchIssRecord, loadPublicTle, resetTleCircuit, userTleError } from '../orbit/fetchTle';
+import { findIss, ISS_FALLBACK_TLE, isIssRecord, pinIssFirst } from '../orbit/iss';
 import { orbitTrack, propagateMany } from '../orbit/propagate';
 import type { CatalogState, GroupId, SatSnapshot, TleRecord } from '../types';
 
 const CACHE_KEY = 'orbita.tle.v1';
+const ISS_KEY = 'orbita.iss.v1';
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const TICK_MS = 1500;
 
 type Ctx = {
   snapshots: SatSnapshot[];
+  allSnapshots: SatSnapshot[];
   records: TleRecord[];
   loading: boolean;
   error: string | null;
@@ -26,6 +28,10 @@ type Ctx = {
   setQuery: (q: string) => void;
   toggleGroup: (g: GroupId) => void;
   select: (noradId: number | null) => void;
+  selectAndFocus: (noradId: number) => void;
+  focusIss: () => void;
+  focusToken: number;
+  setGlobeBusy: (busy: boolean) => void;
   refresh: (force?: boolean) => Promise<void>;
 };
 
@@ -51,12 +57,43 @@ async function writeCache(state: CatalogState): Promise<void> {
   }
 }
 
+async function readLastIss(): Promise<TleRecord | null> {
+  try {
+    const raw = await AsyncStorage.getItem(ISS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as TleRecord;
+    if (!parsed?.line1 || !parsed?.line2 || !isIssRecord(parsed)) return null;
+    return { ...parsed, group: 'stations' };
+  } catch {
+    return null;
+  }
+}
+
+async function writeLastIss(rec: TleRecord): Promise<void> {
+  try {
+    await AsyncStorage.setItem(ISS_KEY, JSON.stringify(rec));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function previewCatalog(record: TleRecord, cached: boolean): CatalogState {
+  return {
+    records: [record],
+    fetchedAt: Date.now(),
+    source: record.source,
+    cached,
+  };
+}
+
 export function SatellitesProvider({ children }: { children: ReactNode }) {
   const [catalog, setCatalog] = useState<CatalogState | null>(null);
   const [snapshots, setSnapshots] = useState<SatSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [focusToken, setFocusToken] = useState(0);
+  const [globeBusy, setGlobeBusy] = useState(false);
   const [enabledGroups, setEnabledGroups] = useState<GroupId[]>([
     'stations',
     'visual',
@@ -68,22 +105,47 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
   ]);
   const [query, setQuery] = useState('');
   const catalogRef = useRef<CatalogState | null>(null);
+  const snapshotsRef = useRef<SatSnapshot[]>([]);
   catalogRef.current = catalog;
+  snapshotsRef.current = snapshots;
 
   const applyCatalog = useCallback((next: CatalogState) => {
-    setCatalog(next);
-    catalogRef.current = next;
-    setSnapshots(propagateMany(next.records));
+    const records = pinIssFirst(next.records);
+    const pinned = { ...next, records };
+    setCatalog(pinned);
+    catalogRef.current = pinned;
+    setSnapshots(propagateMany(records));
     setError(null);
+    const iss = findIss(records);
+    if (iss) void writeLastIss(iss);
   }, []);
 
   const selectIssIfNeeded = useCallback((records: TleRecord[]) => {
     setSelectedId((prev) => {
       if (prev != null) return prev;
-      const iss = records.find(isIssRecord);
+      const iss = findIss(records);
       return iss ? iss.noradId : prev;
     });
   }, []);
+
+  const selectAndFocus = useCallback((noradId: number) => {
+    setSelectedId(noradId);
+    setFocusToken((n) => n + 1);
+  }, []);
+
+  const focusIss = useCallback(() => {
+    const current = catalogRef.current?.records ?? [];
+    const iss = findIss(current) ?? findIss(snapshotsRef.current) ?? ISS_FALLBACK_TLE;
+    selectAndFocus(iss.noradId);
+    if (!findIss(current)) {
+      applyCatalog({
+        records: pinIssFirst([ISS_FALLBACK_TLE, ...current]),
+        fetchedAt: catalogRef.current?.fetchedAt ?? Date.now(),
+        source: catalogRef.current?.source ?? ISS_FALLBACK_TLE.source,
+        cached: true,
+      });
+    }
+  }, [applyCatalog, selectAndFocus]);
 
   const refresh = useCallback(
     async (force = false) => {
@@ -105,22 +167,26 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        const seed: TleRecord[] = [];
-        if (!catalogRef.current?.records.length) {
-          const iss = await fetchIssRecord();
-          if (iss) {
-            seed.push(iss);
-            applyCatalog({
-              records: [iss],
-              fetchedAt: Date.now(),
-              source: iss.source,
-              cached: false,
-            });
-            selectIssIfNeeded([iss]);
-          }
+        if (!findIss(catalogRef.current?.records ?? [])) {
+          const preview = (await readLastIss()) ?? ISS_FALLBACK_TLE;
+          applyCatalog(previewCatalog(preview, true));
+          selectIssIfNeeded([preview]);
         }
 
-        const fresh = await loadPublicTle(seed);
+        const liveIss = await fetchIssRecord();
+        if (liveIss) {
+          const rest = (catalogRef.current?.records ?? []).filter((r) => !isIssRecord(r));
+          applyCatalog({
+            records: pinIssFirst([liveIss, ...rest]),
+            fetchedAt: Date.now(),
+            source: liveIss.source,
+            cached: false,
+          });
+          selectIssIfNeeded([liveIss]);
+        }
+
+        const seed = findIss(catalogRef.current?.records ?? []);
+        const fresh = await loadPublicTle(seed ? [seed] : []);
         applyCatalog(fresh);
         selectIssIfNeeded(fresh.records);
         await writeCache(fresh);
@@ -129,8 +195,12 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
         if (cached) {
           applyCatalog(cached);
           selectIssIfNeeded(cached.records);
+        } else {
+          const lastIss = (await readLastIss()) ?? ISS_FALLBACK_TLE;
+          applyCatalog(previewCatalog(lastIss, true));
+          selectIssIfNeeded([lastIss]);
         }
-        setError(err instanceof Error ? err.message : 'Errore di rete');
+        setError(userTleError(err));
       } finally {
         setLoading(false);
       }
@@ -143,26 +213,32 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   useEffect(() => {
-    if (!catalog?.records.length) return;
+    if (!catalog?.records.length || globeBusy) return;
     const id = setInterval(() => {
       setSnapshots(propagateMany(catalog.records, new Date()));
     }, TICK_MS);
     return () => clearInterval(id);
-  }, [catalog]);
+  }, [catalog, globeBusy]);
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return snapshots.filter((s) => {
-      if (!enabledGroups.includes(s.group)) return false;
-      if (!q) return true;
-      return s.name.toLowerCase().includes(q) || String(s.noradId).includes(q);
-    });
-  }, [snapshots, enabledGroups, query]);
+  const visible = useMemo(
+    () => snapshots.filter((s) => enabledGroups.includes(s.group) || isIssRecord(s)),
+    [snapshots, enabledGroups],
+  );
 
   const selected = useMemo(
-    () => visible.find((s) => s.noradId === selectedId) ?? snapshots.find((s) => s.noradId === selectedId) ?? null,
+    () =>
+      visible.find((s) => s.noradId === selectedId) ??
+      snapshots.find((s) => s.noradId === selectedId) ??
+      null,
     [visible, snapshots, selectedId],
   );
+
+  const globeSnapshots = useMemo(() => {
+    if (selected && !visible.some((s) => s.noradId === selected.noradId)) {
+      return [selected, ...visible];
+    }
+    return visible;
+  }, [visible, selected]);
 
   const selectedTrack = useMemo(() => {
     if (!selected) return [];
@@ -181,7 +257,8 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<Ctx>(
     () => ({
-      snapshots: visible,
+      snapshots: globeSnapshots,
+      allSnapshots: snapshots,
       records: catalog?.records ?? [],
       loading,
       error,
@@ -196,10 +273,15 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
       setQuery,
       toggleGroup,
       select: setSelectedId,
+      selectAndFocus,
+      focusIss,
+      focusToken,
+      setGlobeBusy,
       refresh,
     }),
     [
-      visible,
+      globeSnapshots,
+      snapshots,
       catalog,
       loading,
       error,
@@ -209,6 +291,9 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
       enabledGroups,
       query,
       toggleGroup,
+      selectAndFocus,
+      focusIss,
+      focusToken,
       refresh,
     ],
   );

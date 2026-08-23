@@ -4,7 +4,7 @@ import * as satellite from 'satellite.js';
 
 const UA = 'Orbita/1.0 (it.kreluna.orbita; check-orbit; https://github.com/krelunaid/orbita)';
 const ISS_NORAD = 25544;
-const FETCH_MS = 8_000;
+const FETCH_MS = 6_000;
 
 function parse3le(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -115,6 +115,18 @@ async function fetchFallbacks() {
     .filter((m) => m.line1 && m.line2 && m.name && !/STARLINK/i.test(m.name))
     .map((m) => ({ name: m.name, noradId: Number(m.satelliteId), line1: m.line1, line2: m.line2 }));
 }
+
+const FALLBACK_ISS = {
+  name: 'ISS (ZARYA)',
+  noradId: ISS_NORAD,
+  line1: '1 25544U 98067A   26234.95197288  .00008617  00000-0  16105-3 0  9994',
+  line2: '2 25544  51.6333 329.6465 0007691  74.0420 286.1416 15.49577746582107',
+};
+const fallbackPos = propagate(FALLBACK_ISS);
+if (!Number.isFinite(fallbackPos.lat) || !Number.isFinite(fallbackPos.lon) || fallbackPos.altKm < 200 || fallbackPos.altKm > 800) {
+  throw new Error(`bundled ISS fallback implausible: ${JSON.stringify(fallbackPos)}`);
+}
+console.log('bundled ISS fallback', fallbackPos);
 
 const iss = await fetchIss();
 const pos = propagate(iss);

@@ -24,23 +24,46 @@ export default function GlobeScreen() {
     enabledGroups,
     toggleGroup,
     select,
+    selectAndFocus,
+    focusIss,
+    focusToken,
+    setGlobeBusy,
     refresh,
   } = useSatellites();
 
   const empty = snapshots.length === 0;
+  const statusLine = empty
+    ? loading
+      ? it.inAttesa
+      : error
+        ? it.erroreReteCorta
+        : it.inAttesa
+    : [
+        `${snapshots.length} ${it.oggetti}`,
+        fetchedAt ? `${it.ultimoAggiornamento} ${fmtWhen(fetchedAt)}` : null,
+        cached ? (snapshots.length === 1 ? it.stimaIss : it.cache) : null,
+        source,
+      ]
+        .filter(Boolean)
+        .join(' · ');
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.top}>
         <View style={{ flex: 1 }}>
           <Text style={styles.brand}>{it.appName}</Text>
-          <Text style={styles.sub}>
-            {snapshots.length} {it.oggetti}
-            {fetchedAt ? ` · ${it.ultimoAggiornamento} ${fmtWhen(fetchedAt)}` : ''}
-            {cached ? ` · ${it.cache}` : ''}
-            {source ? ` · ${source}` : ''}
-          </Text>
+          <Text style={styles.sub}>{statusLine}</Text>
         </View>
+        <Pressable
+          onPress={() => {
+            void tapSelect();
+            focusIss();
+          }}
+          style={styles.issBtn}
+          accessibilityRole="button"
+          accessibilityLabel={it.centraIss}>
+          <Text style={styles.issText}>{it.vaiIss}</Text>
+        </Pressable>
         <Pressable
           onPress={() => {
             void tapSelect();
@@ -58,21 +81,26 @@ export default function GlobeScreen() {
           satellites={snapshots}
           selectedId={selectedId}
           selectedTrack={selectedTrack}
+          focusToken={focusToken}
           onSelect={(id) => {
-            if (id) void tapLight();
-            select(id);
+            if (id) {
+              void tapLight();
+              selectAndFocus(id);
+            } else {
+              select(null);
+            }
           }}
+          onInteract={setGlobeBusy}
         />
         {loading && empty ? (
           <View style={styles.overlay} pointerEvents="none">
             <ActivityIndicator color={colors.accent} />
-            <Text style={styles.hint}>{it.caricamento}</Text>
+            <Text style={styles.hint}>{it.caricamentoIss}</Text>
           </View>
         ) : null}
         {error && empty ? (
           <View style={styles.overlay}>
             <Text style={styles.err}>{it.erroreRete}</Text>
-            <Text style={styles.hint}>{error}</Text>
             <Pressable
               onPress={() => {
                 void tapSelect();
@@ -86,13 +114,17 @@ export default function GlobeScreen() {
         {loading && !empty ? (
           <View style={styles.banner} pointerEvents="none">
             <ActivityIndicator color={colors.accent} size="small" />
-            <Text style={styles.bannerText}>{it.caricamento}</Text>
+            <Text style={styles.bannerText}>{it.caricamentoCatalogo}</Text>
           </View>
         ) : null}
         {error && !empty ? (
           <View style={styles.banner}>
-            <Text style={styles.bannerText}>{it.erroreRete}</Text>
-            <Pressable onPress={() => void refresh(true)}>
+            <Text style={styles.bannerText}>{error}</Text>
+            <Pressable
+              onPress={() => {
+                void tapSelect();
+                void refresh(true);
+              }}>
               <Text style={styles.retryText}>{it.riprova}</Text>
             </Pressable>
           </View>
@@ -103,7 +135,10 @@ export default function GlobeScreen() {
         {selected ? (
           <SatelliteCard sat={selected} compact onClose={() => select(null)} />
         ) : (
-          <Text style={styles.hint}>{it.toccaPunto}</Text>
+          <View>
+            <Text style={styles.hint}>{it.toccaPunto}</Text>
+            <Text style={styles.hintSub}>{it.toccaCatalogo}</Text>
+          </View>
         )}
       </View>
     </SafeAreaView>
@@ -117,10 +152,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: space.md,
     paddingBottom: 8,
-    gap: 12,
+    gap: 8,
   },
   brand: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: 0.4 },
   sub: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  issBtn: {
+    borderColor: colors.gold,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  issText: { color: colors.gold, fontSize: 13, fontWeight: '700' },
   refresh: {
     borderColor: colors.line,
     borderWidth: 1,
@@ -156,6 +199,7 @@ const styles = StyleSheet.create({
   bannerText: { color: colors.muted, fontSize: 12, flex: 1 },
   bottom: { paddingHorizontal: space.md, paddingBottom: 10, paddingTop: 6, minHeight: 48 },
   hint: { color: colors.muted, textAlign: 'center', fontSize: 13 },
+  hintSub: { color: colors.dim, textAlign: 'center', fontSize: 12, marginTop: 4 },
   err: { color: colors.danger, textAlign: 'center', fontSize: 14 },
   retry: {
     marginTop: 6,

@@ -2,7 +2,7 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { SatellitesProvider } from '@/src/state/SatellitesContext';
@@ -14,7 +14,9 @@ export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync().catch(() => {
+  // splash already gone / unavailable
+});
 
 const navTheme = {
   ...DarkTheme,
@@ -28,18 +30,28 @@ const navTheme = {
   },
 };
 
+function hideSplash() {
+  void SplashScreen.hideAsync().catch(() => {
+    // already hidden
+  });
+}
+
 export default function RootLayout() {
   const [loaded, fontError] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+  const [giveUp, setGiveUp] = useState(false);
 
   useEffect(() => {
-    if (loaded || fontError) {
-      void SplashScreen.hideAsync();
-    }
-  }, [loaded, fontError]);
+    const t = setTimeout(() => setGiveUp(true), 2800);
+    return () => clearTimeout(t);
+  }, []);
 
-  if (!loaded && !fontError) return null;
+  useEffect(() => {
+    if (loaded || fontError || giveUp) hideSplash();
+  }, [loaded, fontError, giveUp]);
+
+  if (!loaded && !fontError && !giveUp) return null;
 
   return (
     <SatellitesProvider>

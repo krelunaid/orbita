@@ -18,11 +18,11 @@ export function SatelliteCard({ sat, onClose, compact }: Props) {
     <View style={[styles.card, compact && styles.compact]}>
       <View style={styles.head}>
         <View style={[styles.swatch, { backgroundColor: tint }]} />
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.name} numberOfLines={1}>
             {sat.name}
           </Text>
-          <Text style={styles.meta}>
+          <Text style={styles.meta} numberOfLines={1}>
             {it.norad} {sat.noradId} · {groupLabel(sat.group)}
           </Text>
         </View>
@@ -49,8 +49,12 @@ export function SatelliteCard({ sat, onClose, compact }: Props) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={styles.statValue} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -71,7 +75,7 @@ const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 12, marginTop: 2 },
   close: { color: colors.muted, fontSize: 16, paddingHorizontal: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  stat: { width: '47%' },
+  stat: { flexGrow: 1, flexBasis: '46%', minWidth: 0, maxWidth: '48%' },
   statLabel: { color: colors.dim, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4 },
   statValue: { color: colors.text, fontSize: 15, fontFamily: 'SpaceMono', marginTop: 2 },
 });

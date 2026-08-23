@@ -14,7 +14,8 @@
       "buildNumber": "1",
       "infoPlist": {
         "CFBundleDisplayName": "Orbita",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Orbita usa la tua posizione solo per mostrare quali satelliti passano sopra di te in questo momento."
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -22,6 +23,7 @@
     },
     "android": {
       "package": "it.kreluna.orbita",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
       "adaptiveIcon": {
         "backgroundColor": "#05070F",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -37,6 +39,17 @@
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#05070F"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Orbita usa la tua posizione solo per mostrare quali satelliti passano sopra di te in questo momento.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": false,
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
         }
       ]
     ],

@@ -49,6 +49,8 @@ Questa passata **non** carica l’app sull’App Store e non fa login Apple.
 ## Cosa fa
 
 - Globo scuro sempre visibile al primo avvio (trascina / pizzico); i satelliti arrivano sopra
+- Pulsante **Sopra di te**: chiede la posizione (solo quando in uso), centra il globo e elenca i satelliti alti ora (elevazione, direzione N/NE/E…), aggiornati in tempo reale
+- Se la posizione è negata: messaggio utile, **Riprova** / Impostazioni, oppure una città (Roma, Milano, Napoli, Palermo)
 - Se i TLE falliscono: messaggio in italiano e pulsante **Riprova**; l’ISS resta visibile (cache o TLE di emergenza)
 - Cataloghi CelesTrak: `stations`, `visual`, `weather`, `gps-ops`, `galileo`, `science`
 - ISS (NORAD 25544) chiesta per prima, in testa al catalogo e raggiungibile dal pulsante **ISS**

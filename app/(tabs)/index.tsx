@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
   refreshText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
   globe: { flex: 1 },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     padding: space.lg,

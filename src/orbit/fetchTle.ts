@@ -5,8 +5,22 @@ import { dedupeByNorad, isMegaConstellation, parse3le } from './parseTle';
 export const MAX_OBJECTS = 280;
 export { ISS_NORAD, isIssRecord, pinIssFirst };
 
-const FETCH_MS = 12_000;
+const FETCH_MS = 8_000;
 const USER_AGENT = 'Orbita/1.0 (it.kreluna.orbita; +https://github.com/krelunaid/orbita)';
+
+let celestrakUnreachable = false;
+
+export function resetTleCircuit(): void {
+  celestrakUnreachable = false;
+}
+
+function isNetworkFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === 'AbortError' ||
+    /fetch failed|network request failed|timeout|aborted|Failed to connect/i.test(err.message)
+  );
+}
 
 const GROUP_BUDGET: Record<CelestrakGroup, number> = {
   stations: 40,
@@ -76,6 +90,7 @@ async function readText(url: string): Promise<string> {
 }
 
 async function fetchCelestrakGroup(group: CelestrakGroup): Promise<TleRecord[]> {
+  if (celestrakUnreachable) throw new Error('CelesTrak irraggiungibile');
   let last: unknown;
   for (const build of CELESTRAK) {
     try {
@@ -84,6 +99,10 @@ async function fetchCelestrakGroup(group: CelestrakGroup): Promise<TleRecord[]> 
       if (parsed.length > 0) return parsed;
     } catch (err) {
       last = err;
+      if (isNetworkFailure(err)) {
+        celestrakUnreachable = true;
+        break;
+      }
     }
   }
   throw last instanceof Error ? last : new Error(`CelesTrak ${group} vuoto`);
@@ -195,8 +214,10 @@ export async function fetchIssRecord(): Promise<TleRecord | null> {
       const parsed = parse3le(await readText(url), url.includes('satnogs') ? 'satnogs' : 'celestrak', 'stations');
       const iss = parsed.find(isIssRecord);
       if (iss) return { ...iss, group: 'stations' };
-    } catch {
-      // try next source
+    } catch (err) {
+      if (url.includes('celestrak') && isNetworkFailure(err)) {
+        celestrakUnreachable = true;
+      }
     }
   }
   try {
@@ -226,15 +247,18 @@ export async function loadPublicTle(seed: TleRecord[] = []): Promise<CatalogStat
     if (iss) collected.push(iss);
   }
 
-  const groupResults = await mapPool([...GROUP_IDS], 2, async (group) => {
-    try {
-      return await fetchCelestrakGroup(group);
-    } catch (err) {
-      errors.push(`${group}: ${err instanceof Error ? err.message : 'errore'}`);
-      return [] as TleRecord[];
-    }
-  });
-  collected.push(...groupResults.flat());
+  const alreadyHaveCelestrak = collected.some((r) => r.source === 'celestrak');
+  if (alreadyHaveCelestrak || !celestrakUnreachable) {
+    const groupResults = await mapPool([...GROUP_IDS], 2, async (group) => {
+      try {
+        return await fetchCelestrakGroup(group);
+      } catch (err) {
+        errors.push(`${group}: ${err instanceof Error ? err.message : 'errore'}`);
+        return [] as TleRecord[];
+      }
+    });
+    collected.push(...groupResults.flat());
+  }
 
   if (collected.length >= 20 && collected.some(isIssRecord)) {
     return catalogFrom(collected, 'celestrak');

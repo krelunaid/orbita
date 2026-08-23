@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { fetchIssRecord, loadPublicTle } from '../orbit/fetchTle';
+import { fetchIssRecord, loadPublicTle, resetTleCircuit } from '../orbit/fetchTle';
 import { isIssRecord } from '../orbit/iss';
 import { orbitTrack, propagateMany } from '../orbit/propagate';
 import type { CatalogState, GroupId, SatSnapshot, TleRecord } from '../types';
@@ -89,6 +89,7 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
     async (force = false) => {
       setLoading(true);
       setError(null);
+      resetTleCircuit();
       try {
         if (!force) {
           const cached = await readCache();

@@ -92,10 +92,12 @@ async function readText(url: string): Promise<string> {
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
+      cache: 'no-store',
       headers: {
         Accept: 'text/plain, application/json;q=0.9, */*;q=0.5',
         'User-Agent': USER_AGENT,
         'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
       },
     });
     if (!res.ok) throw new Error(`${url} → ${res.status}`);

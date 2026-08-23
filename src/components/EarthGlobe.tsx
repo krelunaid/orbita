@@ -50,6 +50,9 @@ export function EarthGlobe({
   const pendingRot = useRef<{ lat: number; lon: number } | null>(null);
   const pendingScale = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+  const lastFocusToken = useRef(0);
+  const didAutoFocus = useRef(false);
+  const userMovedRef = useRef(false);
 
   rotRef.current = rot;
   scaleRef.current = scale;
@@ -100,17 +103,27 @@ export function EarthGlobe({
     };
   }, []);
 
-  useEffect(() => {
-    if (focusToken <= 0) return;
+  const centerOnSelected = () => {
     const sat =
       satellitesRef.current.find((s) => s.noradId === selectedIdRef.current) ??
       satsRef.current.find(({ s }) => s.noradId === selectedIdRef.current)?.s;
-    if (!sat || !Number.isFinite(sat.lat) || !Number.isFinite(sat.lon)) return;
+    if (!sat || !Number.isFinite(sat.lat) || !Number.isFinite(sat.lon)) return false;
     const next = { lat: clamp(sat.lat, -80, 80), lon: sat.lon };
     rotRef.current = next;
     pendingRot.current = null;
     setRot(next);
-  }, [focusToken]);
+    return true;
+  };
+
+  useEffect(() => {
+    const tokenBump = focusToken > lastFocusToken.current;
+    const initial =
+      !didAutoFocus.current && selectedId != null && !userMovedRef.current && !draggingRef.current;
+    if (!tokenBump && !initial) return;
+    if (!centerOnSelected()) return;
+    if (tokenBump) lastFocusToken.current = focusToken;
+    didAutoFocus.current = true;
+  }, [focusToken, selectedId, satellites]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -191,11 +204,15 @@ export function EarthGlobe({
             const next = clamp(scaleRef.current * (dist / pinch0.current), 0.72, 2.1);
             pinch0.current = dist;
             queueScale(next);
+            userMovedRef.current = true;
           }
           lastTap.current = null;
           return;
         }
-        if (Math.abs(g.dx) + Math.abs(g.dy) > 6) lastTap.current = null;
+        if (Math.abs(g.dx) + Math.abs(g.dy) > 6) {
+          lastTap.current = null;
+          userMovedRef.current = true;
+        }
         queueRot({
           lon: startRot.current.lon - g.dx * 0.18,
           lat: clamp(startRot.current.lat + g.dy * 0.14, -80, 80),

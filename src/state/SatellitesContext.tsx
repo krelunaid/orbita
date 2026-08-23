@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { fetchIssRecord, loadPublicTle, resetTleCircuit, userTleError } from '../orbit/fetchTle';
 import { findIss, ISS_FALLBACK_TLE, isIssRecord, pinIssFirst } from '../orbit/iss';
@@ -8,8 +9,9 @@ import type { CatalogState, GroupId, SatSnapshot, TleRecord } from '../types';
 
 const CACHE_KEY = 'orbita.tle.v1';
 const ISS_KEY = 'orbita.iss.v1';
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const TICK_MS = 1500;
+/** Only debounce a second live revalidation — never skip because cache is “fresh enough”. */
+const LIVE_REVALIDATE_COOLDOWN_MS = 45_000;
 
 type Ctx = {
   snapshots: SatSnapshot[];
@@ -106,6 +108,9 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState('');
   const catalogRef = useRef<CatalogState | null>(null);
   const snapshotsRef = useRef<SatSnapshot[]>([]);
+  const openedFocusRef = useRef(false);
+  const lastNetworkAtRef = useRef(0);
+  const refreshInflightRef = useRef<Promise<void> | null>(null);
   catalogRef.current = catalog;
   snapshotsRef.current = snapshots;
 
@@ -121,11 +126,16 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const selectIssIfNeeded = useCallback((records: TleRecord[]) => {
+    const iss = findIss(records);
     setSelectedId((prev) => {
       if (prev != null) return prev;
-      const iss = findIss(records);
       return iss ? iss.noradId : prev;
     });
+    // First paint: ISS is selected but the globe only recenters when focusToken > 0.
+    if (!openedFocusRef.current && iss) {
+      openedFocusRef.current = true;
+      setFocusToken((n) => n + 1);
+    }
   }, []);
 
   const selectAndFocus = useCallback((noradId: number) => {
@@ -149,60 +159,81 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(
     async (force = false) => {
-      setLoading(true);
-      setError(null);
-      resetTleCircuit();
-      try {
-        if (!force) {
-          const cached = await readCache();
-          if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-            applyCatalog(cached);
-            selectIssIfNeeded(cached.records);
-            setLoading(false);
-            return;
+      if (refreshInflightRef.current) return refreshInflightRef.current;
+
+      const live = catalogRef.current;
+      if (
+        !force &&
+        live &&
+        !live.cached &&
+        lastNetworkAtRef.current > 0 &&
+        Date.now() - lastNetworkAtRef.current < LIVE_REVALIDATE_COOLDOWN_MS
+      ) {
+        return;
+      }
+
+      const run = (async () => {
+        setLoading(true);
+        setError(null);
+        resetTleCircuit();
+        try {
+          if (!force) {
+            const memory = catalogRef.current;
+            if (!memory || memory.cached) {
+              const cached = await readCache();
+              if (cached) {
+                applyCatalog(cached);
+                selectIssIfNeeded(cached.records);
+              }
+            }
           }
+
+          lastNetworkAtRef.current = Date.now();
+
+          if (!findIss(catalogRef.current?.records ?? [])) {
+            const preview = (await readLastIss()) ?? ISS_FALLBACK_TLE;
+            applyCatalog(previewCatalog(preview, true));
+            selectIssIfNeeded([preview]);
+          }
+
+          const liveIss = await fetchIssRecord();
+          if (liveIss) {
+            const rest = (catalogRef.current?.records ?? []).filter((r) => !isIssRecord(r));
+            applyCatalog({
+              records: pinIssFirst([liveIss, ...rest]),
+              fetchedAt: Date.now(),
+              source: liveIss.source,
+              cached: false,
+            });
+            selectIssIfNeeded([liveIss]);
+          }
+
+          const seed = findIss(catalogRef.current?.records ?? []);
+          const fresh = await loadPublicTle(seed ? [seed] : []);
+          applyCatalog(fresh);
+          selectIssIfNeeded(fresh.records);
+          await writeCache(fresh);
+        } catch (err) {
+          const cached = catalogRef.current ?? (await readCache());
           if (cached) {
             applyCatalog(cached);
             selectIssIfNeeded(cached.records);
+          } else {
+            const lastIss = (await readLastIss()) ?? ISS_FALLBACK_TLE;
+            applyCatalog(previewCatalog(lastIss, true));
+            selectIssIfNeeded([lastIss]);
           }
+          setError(userTleError(err));
+        } finally {
+          setLoading(false);
         }
+      })();
 
-        if (!findIss(catalogRef.current?.records ?? [])) {
-          const preview = (await readLastIss()) ?? ISS_FALLBACK_TLE;
-          applyCatalog(previewCatalog(preview, true));
-          selectIssIfNeeded([preview]);
-        }
-
-        const liveIss = await fetchIssRecord();
-        if (liveIss) {
-          const rest = (catalogRef.current?.records ?? []).filter((r) => !isIssRecord(r));
-          applyCatalog({
-            records: pinIssFirst([liveIss, ...rest]),
-            fetchedAt: Date.now(),
-            source: liveIss.source,
-            cached: false,
-          });
-          selectIssIfNeeded([liveIss]);
-        }
-
-        const seed = findIss(catalogRef.current?.records ?? []);
-        const fresh = await loadPublicTle(seed ? [seed] : []);
-        applyCatalog(fresh);
-        selectIssIfNeeded(fresh.records);
-        await writeCache(fresh);
-      } catch (err) {
-        const cached = catalogRef.current ?? (await readCache());
-        if (cached) {
-          applyCatalog(cached);
-          selectIssIfNeeded(cached.records);
-        } else {
-          const lastIss = (await readLastIss()) ?? ISS_FALLBACK_TLE;
-          applyCatalog(previewCatalog(lastIss, true));
-          selectIssIfNeeded([lastIss]);
-        }
-        setError(userTleError(err));
+      refreshInflightRef.current = run;
+      try {
+        await run;
       } finally {
-        setLoading(false);
+        if (refreshInflightRef.current === run) refreshInflightRef.current = null;
       }
     },
     [applyCatalog, selectIssIfNeeded],
@@ -210,6 +241,14 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh(false);
+  }, [refresh]);
+
+  useEffect(() => {
+    const onChange = (state: AppStateStatus) => {
+      if (state === 'active') void refresh(false);
+    };
+    const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
   }, [refresh]);
 
   useEffect(() => {

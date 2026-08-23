@@ -1,3 +1,4 @@
+import { it } from '../i18n';
 import { GROUP_IDS, type CatalogState, type CelestrakGroup, type GroupId, type TleRecord } from '../types';
 import { ISS_NORAD, isIssRecord, pinIssFirst } from './iss';
 import { dedupeByNorad, isMegaConstellation, parse3le } from './parseTle';
@@ -5,7 +6,7 @@ import { dedupeByNorad, isMegaConstellation, parse3le } from './parseTle';
 export const MAX_OBJECTS = 280;
 export { ISS_NORAD, isIssRecord, pinIssFirst };
 
-const FETCH_MS = 8_000;
+const FETCH_MS = 6_000;
 const USER_AGENT = 'Orbita/1.0 (it.kreluna.orbita; +https://github.com/krelunaid/orbita)';
 
 let celestrakUnreachable = false;
@@ -20,6 +21,24 @@ function isNetworkFailure(err: unknown): boolean {
     err.name === 'AbortError' ||
     /fetch failed|network request failed|timeout|aborted|Failed to connect/i.test(err.message)
   );
+}
+
+function isCelestrakDead(err: unknown): boolean {
+  if (isNetworkFailure(err)) return true;
+  if (!(err instanceof Error)) return false;
+  return /HTML invece|→ (403|408|429|451|500|502|503|504)\b/.test(err.message);
+}
+
+export function userTleError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : '';
+  if (/timeout|AbortError|aborted|non rispond/i.test(msg) || (err instanceof Error && err.name === 'AbortError')) {
+    return it.erroreTimeout;
+  }
+  if (/Failed to connect|network request failed|fetch failed/i.test(msg)) {
+    return it.erroreConnessione;
+  }
+  if (/Nessuna fonte/i.test(msg)) return it.erroreNessunaFonte;
+  return it.erroreRete;
 }
 
 const GROUP_BUDGET: Record<CelestrakGroup, number> = {
@@ -99,7 +118,7 @@ async function fetchCelestrakGroup(group: CelestrakGroup): Promise<TleRecord[]> 
       if (parsed.length > 0) return parsed;
     } catch (err) {
       last = err;
-      if (isNetworkFailure(err)) {
+      if (isCelestrakDead(err)) {
         celestrakUnreachable = true;
         break;
       }
@@ -215,7 +234,7 @@ export async function fetchIssRecord(): Promise<TleRecord | null> {
       const iss = parsed.find(isIssRecord);
       if (iss) return { ...iss, group: 'stations' };
     } catch (err) {
-      if (url.includes('celestrak') && isNetworkFailure(err)) {
+      if (url.includes('celestrak') && isCelestrakDead(err)) {
         celestrakUnreachable = true;
       }
     }
@@ -240,7 +259,6 @@ function catalogFrom(records: TleRecord[], source: CatalogState['source']): Cata
 
 export async function loadPublicTle(seed: TleRecord[] = []): Promise<CatalogState> {
   const collected: TleRecord[] = [...seed];
-  const errors: string[] = [];
 
   if (!collected.some(isIssRecord)) {
     const iss = await fetchIssRecord();
@@ -253,7 +271,7 @@ export async function loadPublicTle(seed: TleRecord[] = []): Promise<CatalogStat
       try {
         return await fetchCelestrakGroup(group);
       } catch (err) {
-        errors.push(`${group}: ${err instanceof Error ? err.message : 'errore'}`);
+        console.warn('CelesTrak group failed', group, err instanceof Error ? err.message : err);
         return [] as TleRecord[];
       }
     });
@@ -273,7 +291,7 @@ export async function loadPublicTle(seed: TleRecord[] = []): Promise<CatalogStat
       return catalogFrom([...collected, ...satnogs], 'satnogs');
     }
   } catch (err) {
-    errors.push(`satnogs: ${err instanceof Error ? err.message : 'errore'}`);
+    console.warn('SatNOGS fallback failed', err instanceof Error ? err.message : err);
   }
 
   try {
@@ -283,12 +301,12 @@ export async function loadPublicTle(seed: TleRecord[] = []): Promise<CatalogStat
       return catalogFrom(merged, 'ivanstanojevic');
     }
   } catch (err) {
-    errors.push(`ivan: ${err instanceof Error ? err.message : 'errore'}`);
+    console.warn('Ivan TLE fallback failed', err instanceof Error ? err.message : err);
   }
 
   if (collected.length > 0) {
     return catalogFrom(collected, collected[0].source);
   }
 
-  throw new Error(errors.join(' · ') || 'Nessuna fonte TLE disponibile');
+  throw new Error(it.erroreNessunaFonte);
 }

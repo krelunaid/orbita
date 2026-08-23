@@ -1,10 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import {
-  LayoutChangeEvent,
-  PanResponder,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { LayoutChangeEvent, PanResponder, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import { LAND_RINGS } from '../data/landmasses';
@@ -17,7 +12,9 @@ type Props = {
   satellites: SatSnapshot[];
   selectedId: number | null;
   selectedTrack: { lat: number; lon: number; altKm: number }[];
+  focusToken?: number;
   onSelect: (noradId: number | null) => void;
+  onInteract?: (busy: boolean) => void;
 };
 
 const STARS = Array.from({ length: 70 }, (_, i) => ({
@@ -27,21 +24,93 @@ const STARS = Array.from({ length: 70 }, (_, i) => ({
   o: 0.25 + ((i * 13) % 50) / 100,
 }));
 
-export function EarthGlobe({ satellites, selectedId, selectedTrack, onSelect }: Props) {
+export function EarthGlobe({
+  satellites,
+  selectedId,
+  selectedTrack,
+  focusToken = 0,
+  onSelect,
+  onInteract,
+}: Props) {
   const [size, setSize] = useState({ w: 360, h: 420 });
   const [rot, setRot] = useState({ lat: 18, lon: 12 });
   const [scale, setScale] = useState(1);
+  const [dragging, setDragging] = useState(false);
   const rotRef = useRef(rot);
   const scaleRef = useRef(scale);
   const startRot = useRef(rot);
   const pinch0 = useRef<number | null>(null);
   const lastTap = useRef<{ x: number; y: number } | null>(null);
   const satsRef = useRef<{ s: SatSnapshot; p: ReturnType<typeof projectGeo> }[]>([]);
+  const satellitesRef = useRef(satellites);
+  const selectedIdRef = useRef(selectedId);
   const onSelectRef = useRef(onSelect);
+  const onInteractRef = useRef(onInteract);
+  const draggingRef = useRef(false);
+  const pendingRot = useRef<{ lat: number; lon: number } | null>(null);
+  const pendingScale = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   rotRef.current = rot;
   scaleRef.current = scale;
+  satellitesRef.current = satellites;
+  selectedIdRef.current = selectedId;
   onSelectRef.current = onSelect;
+  onInteractRef.current = onInteract;
+
+  const flushView = () => {
+    rafRef.current = null;
+    if (pendingRot.current) {
+      setRot(pendingRot.current);
+      pendingRot.current = null;
+    }
+    if (pendingScale.current != null) {
+      setScale(pendingScale.current);
+      pendingScale.current = null;
+    }
+  };
+
+  const scheduleFlush = () => {
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(flushView);
+  };
+
+  const queueRot = (next: { lat: number; lon: number }) => {
+    rotRef.current = next;
+    pendingRot.current = next;
+    scheduleFlush();
+  };
+
+  const queueScale = (next: number) => {
+    scaleRef.current = next;
+    pendingScale.current = next;
+    scheduleFlush();
+  };
+
+  const setBusy = (busy: boolean) => {
+    if (draggingRef.current === busy) return;
+    draggingRef.current = busy;
+    setDragging(busy);
+    onInteractRef.current?.(busy);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (focusToken <= 0) return;
+    const sat =
+      satellitesRef.current.find((s) => s.noradId === selectedIdRef.current) ??
+      satsRef.current.find(({ s }) => s.noradId === selectedIdRef.current)?.s;
+    if (!sat || !Number.isFinite(sat.lat) || !Number.isFinite(sat.lon)) return;
+    const next = { lat: clamp(sat.lat, -80, 80), lon: sat.lon };
+    rotRef.current = next;
+    pendingRot.current = null;
+    setRot(next);
+  }, [focusToken]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -107,6 +176,7 @@ export function EarthGlobe({ satellites, selectedId, selectedTrack, onSelect }: 
         const t = e.nativeEvent.touches;
         startRot.current = { ...rotRef.current };
         lastTap.current = { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY };
+        setBusy(true);
         if (t.length >= 2) {
           pinch0.current = Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY);
         } else {
@@ -120,31 +190,39 @@ export function EarthGlobe({ satellites, selectedId, selectedTrack, onSelect }: 
           if (pinch0.current && pinch0.current > 8) {
             const next = clamp(scaleRef.current * (dist / pinch0.current), 0.72, 2.1);
             pinch0.current = dist;
-            scaleRef.current = next;
-            setScale(next);
+            queueScale(next);
           }
           lastTap.current = null;
           return;
         }
         if (Math.abs(g.dx) + Math.abs(g.dy) > 6) lastTap.current = null;
-        const next = {
+        queueRot({
           lon: startRot.current.lon - g.dx * 0.18,
           lat: clamp(startRot.current.lat + g.dy * 0.14, -80, 80),
-        };
-        rotRef.current = next;
-        setRot(next);
+        });
       },
       onPanResponderRelease: (e) => {
         pinch0.current = null;
+        setBusy(false);
         if (lastTap.current) {
           pickNear(e.nativeEvent.locationX, e.nativeEvent.locationY);
         }
+      },
+      onPanResponderTerminate: () => {
+        pinch0.current = null;
+        setBusy(false);
       },
     }),
   ).current;
 
   const lightX = sunProj.front ? sunProj.x : cx - (sunProj.x - cx) * 0.35;
   const lightY = sunProj.front ? sunProj.y : cy - (sunProj.y - cy) * 0.35;
+
+  const drawnSats = dragging
+    ? sats.filter(
+        ({ s, p }) => p.front && (s.noradId === selectedId || s.group === 'stations'),
+      )
+    : sats.filter(({ p }) => p.front);
 
   return (
     <View style={styles.fill} onLayout={onLayout} {...responder.panHandlers}>
@@ -162,16 +240,18 @@ export function EarthGlobe({ satellites, selectedId, selectedTrack, onSelect }: 
           </RadialGradient>
         </Defs>
 
-        {STARS.map((st, i) => (
-          <Circle
-            key={i}
-            cx={(st.x / 100) * size.w}
-            cy={(st.y / 100) * size.h}
-            r={st.r}
-            fill="#E8F1FF"
-            opacity={st.o}
-          />
-        ))}
+        {!dragging
+          ? STARS.map((st, i) => (
+              <Circle
+                key={i}
+                cx={(st.x / 100) * size.w}
+                cy={(st.y / 100) * size.h}
+                r={st.r}
+                fill="#E8F1FF"
+                opacity={st.o}
+              />
+            ))
+          : null}
 
         <Circle cx={cx} cy={cy} r={earthPx * 1.16} fill="url(#halo)" />
         <Circle cx={cx} cy={cy} r={earthPx} fill="url(#ocean)" />
@@ -184,23 +264,21 @@ export function EarthGlobe({ satellites, selectedId, selectedTrack, onSelect }: 
           <Path d={trackPath} fill="none" stroke={colors.gold} strokeWidth={1.4} opacity={0.85} />
         ) : null}
 
-        {sats
-          .filter(({ p }) => p.front)
-          .map(({ s, p }) => {
-            const selected = s.noradId === selectedId;
-            const r = selected ? 5.5 : s.group === 'stations' ? 4 : 2.6;
-            return (
-              <Circle
-                key={s.noradId}
-                cx={p.x}
-                cy={p.y}
-                r={r}
-                fill={colors.groups[s.group]}
-                stroke={selected ? '#FFFFFF' : 'rgba(5,7,15,0.6)'}
-                strokeWidth={selected ? 1.6 : 0.6}
-              />
-            );
-          })}
+        {drawnSats.map(({ s, p }) => {
+          const selected = s.noradId === selectedId;
+          const r = selected ? 5.5 : s.group === 'stations' ? 4 : 2.6;
+          return (
+            <Circle
+              key={s.noradId}
+              cx={p.x}
+              cy={p.y}
+              r={r}
+              fill={colors.groups[s.group]}
+              stroke={selected ? '#FFFFFF' : 'rgba(5,7,15,0.6)'}
+              strokeWidth={selected ? 1.6 : 0.6}
+            />
+          );
+        })}
       </Svg>
     </View>
   );

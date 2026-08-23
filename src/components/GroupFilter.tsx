@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { tapLight } from '../haptics';
 import { groupLabel } from '../i18n';
 import { colors, space } from '../theme';
 import { GROUP_IDS, type GroupId } from '../types';
@@ -19,7 +20,10 @@ export function GroupFilter({ enabled, onToggle }: Props) {
         return (
           <Pressable
             key={g}
-            onPress={() => onToggle(g)}
+            onPress={() => {
+              void tapLight();
+              onToggle(g);
+            }}
             style={[styles.chip, on && { borderColor: colors.groups[g], backgroundColor: '#121A2C' }]}>
             <View style={[styles.dot, { backgroundColor: colors.groups[g] }]} />
             <Text style={[styles.label, on ? styles.on : styles.off]}>{groupLabel(g)}</Text>

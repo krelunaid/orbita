@@ -69,10 +69,19 @@ export function periodMinutes(line2: string): number {
   return n > 0 ? 1440 / n : 0;
 }
 
+/** TLE epoch from line 1 (yyddd.ffffffff). Newer values replace older duplicates. */
+export function tleEpoch(line1: string): number {
+  const raw = Number.parseFloat(line1.slice(18, 32).trim());
+  return Number.isFinite(raw) ? raw : 0;
+}
+
 export function dedupeByNorad(records: TleRecord[]): TleRecord[] {
   const seen = new Map<number, TleRecord>();
   for (const rec of records) {
-    if (!seen.has(rec.noradId)) seen.set(rec.noradId, rec);
+    const prev = seen.get(rec.noradId);
+    if (!prev || tleEpoch(rec.line1) > tleEpoch(prev.line1)) {
+      seen.set(rec.noradId, rec);
+    }
   }
   return [...seen.values()];
 }

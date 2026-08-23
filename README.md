@@ -49,9 +49,10 @@ Questa passata **non** carica l’app sull’App Store e non fa login Apple.
 ## Cosa fa
 
 - Globo scuro sempre visibile al primo avvio (trascina / pizzico); i satelliti arrivano sopra
-- Se i TLE falliscono: messaggio in italiano e pulsante **Riprova**
+- Se i TLE falliscono: messaggio in italiano e pulsante **Riprova**; l’ISS resta visibile (cache o TLE di emergenza)
 - Cataloghi CelesTrak: `stations`, `visual`, `weather`, `gps-ops`, `galileo`, `science`
-- ISS (NORAD 25544) chiesta per prima e in testa al catalogo
+- ISS (NORAD 25544) chiesta per prima, in testa al catalogo e raggiungibile dal pulsante **ISS**
+- Dal catalogo: cerca per nome/NORAD e tocca una riga per centrare quel satellite sul globo
 - Se CelesTrak non risponde: SatNOGS DB (solo oggetti scelti, non il dump intero), poi `tle.ivanstanojevic.me`
 - Niente dump Starlink, niente Space-Track
 - Massimo ~280 oggetti

@@ -1,0 +1,36 @@
+export const colors = {
+  bg: '#05070F',
+  bgElevated: '#0C1220',
+  panel: 'rgba(10, 16, 32, 0.88)',
+  panelSolid: '#10182A',
+  line: 'rgba(140, 180, 220, 0.18)',
+  text: '#E8F1FF',
+  muted: '#8BA0B8',
+  dim: '#5C6F86',
+  accent: '#7DD3FC',
+  gold: '#FFD166',
+  ocean: '#0B2240',
+  oceanDeep: '#061018',
+  land: '#3D6B4F',
+  landEdge: '#2A4A38',
+  atmosphere: '#7DD3FC',
+  night: 'rgba(2, 6, 18, 0.42)',
+  danger: '#FCA5A5',
+  groups: {
+    stations: '#FFD166',
+    visual: '#7DD3FC',
+    weather: '#86EFAC',
+    'gps-ops': '#C4B5FD',
+    galileo: '#F9A8D4',
+    science: '#FDBA74',
+    altro: '#94A3B8',
+  },
+} as const;
+
+export const space = {
+  xs: 6,
+  sm: 10,
+  md: 16,
+  lg: 22,
+  xl: 32,
+} as const;

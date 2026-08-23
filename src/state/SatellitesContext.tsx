@@ -1,17 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { it } from '../i18n';
+import { findCity, observerFromCity, observerFromCoords } from '../location/cities';
 import { fetchIssRecord, loadPublicTle, resetTleCircuit, userTleError } from '../orbit/fetchTle';
 import { findIss, ISS_FALLBACK_TLE, isIssRecord, pinIssFirst } from '../orbit/iss';
+import { pickOverhead, type OverheadPick } from '../orbit/look';
 import { orbitTrack, propagateMany } from '../orbit/propagate';
-import type { CatalogState, GroupId, SatSnapshot, TleRecord } from '../types';
+import type { CatalogState, GroupId, Observer, SatSnapshot, TleRecord } from '../types';
 
 const CACHE_KEY = 'orbita.tle.v1';
 const ISS_KEY = 'orbita.iss.v1';
 const TICK_MS = 1500;
 /** Only debounce a second live revalidation — never skip because cache is “fresh enough”. */
 const LIVE_REVALIDATE_COOLDOWN_MS = 45_000;
+
+export type LocationStatus = 'idle' | 'requesting' | 'ready' | 'denied' | 'error';
+export type FocusMode = 'sat' | 'geo';
 
 type Ctx = {
   snapshots: SatSnapshot[];
@@ -33,8 +40,19 @@ type Ctx = {
   selectAndFocus: (noradId: number) => void;
   focusIss: () => void;
   focusToken: number;
+  focusMode: FocusMode;
   setGlobeBusy: (busy: boolean) => void;
   refresh: (force?: boolean) => Promise<void>;
+  observer: Observer | null;
+  locationStatus: LocationStatus;
+  locationCanAskAgain: boolean;
+  locationMessage: string | null;
+  overheadOpen: boolean;
+  overhead: OverheadPick;
+  requestMyLocation: () => Promise<void>;
+  useFallbackCity: (cityId: string) => void;
+  setOverheadOpen: (open: boolean) => void;
+  focusObserver: () => void;
 };
 
 const SatellitesContext = createContext<Ctx | null>(null);
@@ -106,20 +124,28 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
     'altro',
   ]);
   const [query, setQuery] = useState('');
+  const [observer, setObserver] = useState<Observer | null>(null);
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
+  const [locationCanAskAgain, setLocationCanAskAgain] = useState(true);
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const [overheadOpen, setOverheadOpen] = useState(false);
+  const [focusMode, setFocusMode] = useState<FocusMode>('sat');
   const catalogRef = useRef<CatalogState | null>(null);
   const snapshotsRef = useRef<SatSnapshot[]>([]);
+  const observerRef = useRef<Observer | null>(null);
   const openedFocusRef = useRef(false);
   const lastNetworkAtRef = useRef(0);
   const refreshInflightRef = useRef<Promise<void> | null>(null);
   catalogRef.current = catalog;
   snapshotsRef.current = snapshots;
+  observerRef.current = observer;
 
   const applyCatalog = useCallback((next: CatalogState) => {
     const records = pinIssFirst(next.records);
     const pinned = { ...next, records };
     setCatalog(pinned);
     catalogRef.current = pinned;
-    setSnapshots(propagateMany(records));
+    setSnapshots(propagateMany(records, new Date(), observerRef.current));
     setError(null);
     const iss = findIss(records);
     if (iss) void writeLastIss(iss);
@@ -140,8 +166,33 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
 
   const selectAndFocus = useCallback((noradId: number) => {
     setSelectedId(noradId);
+    setFocusMode('sat');
     setFocusToken((n) => n + 1);
   }, []);
+
+  const focusObserver = useCallback(() => {
+    if (!observerRef.current) return;
+    setFocusMode('geo');
+    setFocusToken((n) => n + 1);
+    setOverheadOpen(true);
+  }, []);
+
+  const applyObserver = useCallback(
+    (next: Observer) => {
+      observerRef.current = next;
+      setObserver(next);
+      setLocationStatus('ready');
+      setLocationMessage(null);
+      const records = catalogRef.current?.records;
+      if (records?.length) {
+        setSnapshots(propagateMany(records, new Date(), next));
+      }
+      setFocusMode('geo');
+      setFocusToken((n) => n + 1);
+      setOverheadOpen(true);
+    },
+    [],
+  );
 
   const focusIss = useCallback(() => {
     const current = catalogRef.current?.records ?? [];
@@ -254,7 +305,7 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!catalog?.records.length || globeBusy) return;
     const id = setInterval(() => {
-      setSnapshots(propagateMany(catalog.records, new Date()));
+      setSnapshots(propagateMany(catalog.records, new Date(), observerRef.current));
     }, TICK_MS);
     return () => clearInterval(id);
   }, [catalog, globeBusy]);
@@ -284,6 +335,77 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
     return orbitTrack(selected);
   }, [selected?.noradId, selected?.line1, selected?.line2]);
 
+  const requestMyLocation = useCallback(async () => {
+    setOverheadOpen(true);
+    setLocationStatus('requesting');
+    setLocationMessage(null);
+    try {
+      const existing = await Location.getForegroundPermissionsAsync();
+      let granted = existing.granted;
+      setLocationCanAskAgain(existing.canAskAgain);
+
+      if (!granted) {
+        const asked = await Location.requestForegroundPermissionsAsync();
+        granted = asked.granted;
+        setLocationCanAskAgain(asked.canAskAgain);
+      }
+
+      if (!granted) {
+        setLocationStatus('denied');
+        setLocationMessage(it.posizioneNegata);
+        return;
+      }
+
+      const last = await Location.getLastKnownPositionAsync({
+        maxAge: 10 * 60_000,
+        requiredAccuracy: 8_000,
+      });
+      if (last) {
+        applyObserver(
+          observerFromCoords(
+            last.coords.latitude,
+            last.coords.longitude,
+            last.coords.altitude,
+            it.miaPosizione,
+          ),
+        );
+      }
+
+      const fresh = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('timeout')), 12_000);
+        }),
+      ]);
+      applyObserver(
+        observerFromCoords(
+          fresh.coords.latitude,
+          fresh.coords.longitude,
+          fresh.coords.altitude,
+          it.miaPosizione,
+        ),
+      );
+    } catch {
+      if (observerRef.current?.kind === 'gps') {
+        setLocationStatus('ready');
+        setLocationMessage(null);
+        focusObserver();
+        return;
+      }
+      setLocationStatus('error');
+      setLocationMessage(it.posizioneErrore);
+    }
+  }, [applyObserver, focusObserver]);
+
+  const useFallbackCity = useCallback(
+    (cityId: string) => {
+      const city = findCity(cityId);
+      if (!city) return;
+      applyObserver(observerFromCity(city));
+    },
+    [applyObserver],
+  );
+
   const toggleGroup = useCallback((g: GroupId) => {
     setEnabledGroups((prev) => {
       if (prev.includes(g)) {
@@ -293,6 +415,8 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
       return [...prev, g];
     });
   }, []);
+
+  const overhead = useMemo(() => pickOverhead(snapshots), [snapshots]);
 
   const value = useMemo<Ctx>(
     () => ({
@@ -315,8 +439,19 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
       selectAndFocus,
       focusIss,
       focusToken,
+      focusMode,
       setGlobeBusy,
       refresh,
+      observer,
+      locationStatus,
+      locationCanAskAgain,
+      locationMessage,
+      overheadOpen,
+      overhead,
+      requestMyLocation,
+      useFallbackCity,
+      setOverheadOpen,
+      focusObserver,
     }),
     [
       globeSnapshots,
@@ -333,7 +468,17 @@ export function SatellitesProvider({ children }: { children: ReactNode }) {
       selectAndFocus,
       focusIss,
       focusToken,
+      focusMode,
       refresh,
+      observer,
+      locationStatus,
+      locationCanAskAgain,
+      locationMessage,
+      overheadOpen,
+      overhead,
+      requestMyLocation,
+      useFallbackCity,
+      focusObserver,
     ],
   );
 

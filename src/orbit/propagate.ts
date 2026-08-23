@@ -1,9 +1,14 @@
 import * as satellite from 'satellite.js';
 
+import { lookFromEci } from './look';
 import { inclinationDeg, periodMinutes } from './parseTle';
-import type { SatSnapshot, TleRecord } from '../types';
+import type { Observer, SatSnapshot, TleRecord } from '../types';
 
-export function propagateNow(record: TleRecord, when = new Date()): SatSnapshot {
+export function propagateNow(
+  record: TleRecord,
+  when = new Date(),
+  observer?: Observer | null,
+): SatSnapshot {
   const base = {
     ...record,
     lat: 0,
@@ -34,14 +39,19 @@ export function propagateNow(record: TleRecord, when = new Date()): SatSnapshot 
       return base;
     }
 
-    return { ...base, lat, lon, altKm, velocityKmS, valid: true };
+    const look = observer ? lookFromEci(position, gmst, observer) ?? undefined : undefined;
+    return { ...base, lat, lon, altKm, velocityKmS, valid: true, look };
   } catch {
     return base;
   }
 }
 
-export function propagateMany(records: TleRecord[], when = new Date()): SatSnapshot[] {
-  return records.map((r) => propagateNow(r, when)).filter((s) => s.valid);
+export function propagateMany(
+  records: TleRecord[],
+  when = new Date(),
+  observer?: Observer | null,
+): SatSnapshot[] {
+  return records.map((r) => propagateNow(r, when, observer)).filter((s) => s.valid);
 }
 
 export type GeoPoint = { lat: number; lon: number; altKm: number };

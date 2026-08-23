@@ -20,6 +20,10 @@ export function fmtPeriod(min: number): string {
   return `${min.toFixed(1)} min`;
 }
 
+export function fmtElev(deg: number): string {
+  return `${Math.round(deg)}°`;
+}
+
 export function fmtWhen(ts: number | null): string {
   if (!ts) return '—';
   try {

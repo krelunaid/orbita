@@ -21,6 +21,22 @@ export type TleRecord = {
   source: TleSource;
 };
 
+export type ObserverKind = 'gps' | 'city';
+
+export type Observer = {
+  lat: number;
+  lon: number;
+  altKm: number;
+  kind: ObserverKind;
+  label: string;
+};
+
+export type LookAngles = {
+  elevationDeg: number;
+  azimuthDeg: number;
+  rangeKm: number;
+};
+
 export type SatSnapshot = TleRecord & {
   lat: number;
   lon: number;
@@ -29,6 +45,7 @@ export type SatSnapshot = TleRecord & {
   periodMin: number;
   inclinationDeg: number;
   valid: boolean;
+  look?: LookAngles;
 };
 
 export type CatalogState = {

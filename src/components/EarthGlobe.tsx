@@ -3,6 +3,7 @@ import { LayoutChangeEvent, PanResponder, StyleSheet, View } from 'react-native'
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import { LAND_RINGS } from '../data/landmasses';
+import { HIGH_ELEV_DEG } from '../orbit/look';
 import { clamp, pathFromRing, projectGeo } from '../orbit/project';
 import { subsolarPoint } from '../orbit/propagate';
 import { colors } from '../theme';
@@ -13,6 +14,8 @@ type Props = {
   selectedId: number | null;
   selectedTrack: { lat: number; lon: number; altKm: number }[];
   focusToken?: number;
+  focusMode?: 'sat' | 'geo';
+  observer?: { lat: number; lon: number } | null;
   onSelect: (noradId: number | null) => void;
   onInteract?: (busy: boolean) => void;
 };
@@ -29,6 +32,8 @@ export function EarthGlobe({
   selectedId,
   selectedTrack,
   focusToken = 0,
+  focusMode = 'sat',
+  observer = null,
   onSelect,
   onInteract,
 }: Props) {
@@ -53,6 +58,10 @@ export function EarthGlobe({
   const lastFocusToken = useRef(0);
   const didAutoFocus = useRef(false);
   const userMovedRef = useRef(false);
+  const observerRef = useRef(observer);
+  const focusModeRef = useRef(focusMode);
+  observerRef.current = observer;
+  focusModeRef.current = focusMode;
 
   rotRef.current = rot;
   scaleRef.current = scale;
@@ -103,16 +112,27 @@ export function EarthGlobe({
     };
   }, []);
 
-  const centerOnSelected = () => {
-    const sat =
-      satellitesRef.current.find((s) => s.noradId === selectedIdRef.current) ??
-      satsRef.current.find(({ s }) => s.noradId === selectedIdRef.current)?.s;
-    if (!sat || !Number.isFinite(sat.lat) || !Number.isFinite(sat.lon)) return false;
-    const next = { lat: clamp(sat.lat, -80, 80), lon: sat.lon };
+  const centerOnLatLon = (lat: number, lon: number) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+    const next = { lat: clamp(lat, -80, 80), lon };
     rotRef.current = next;
     pendingRot.current = null;
     setRot(next);
     return true;
+  };
+
+  const centerOnSelected = () => {
+    const sat =
+      satellitesRef.current.find((s) => s.noradId === selectedIdRef.current) ??
+      satsRef.current.find(({ s }) => s.noradId === selectedIdRef.current)?.s;
+    if (!sat) return false;
+    return centerOnLatLon(sat.lat, sat.lon);
+  };
+
+  const centerOnObserver = () => {
+    const here = observerRef.current;
+    if (!here) return false;
+    return centerOnLatLon(here.lat, here.lon);
   };
 
   useEffect(() => {
@@ -120,10 +140,14 @@ export function EarthGlobe({
     const initial =
       !didAutoFocus.current && selectedId != null && !userMovedRef.current && !draggingRef.current;
     if (!tokenBump && !initial) return;
-    if (!centerOnSelected()) return;
+    const ok =
+      (tokenBump && focusModeRef.current === 'geo' ? centerOnObserver() : false) ||
+      centerOnSelected() ||
+      (focusModeRef.current === 'geo' ? centerOnObserver() : false);
+    if (!ok) return;
     if (tokenBump) lastFocusToken.current = focusToken;
     didAutoFocus.current = true;
-  }, [focusToken, selectedId, satellites]);
+  }, [focusToken, focusMode, observer, selectedId, satellites]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -154,6 +178,10 @@ export function EarthGlobe({
     [satellites, rot.lat, rot.lon, earthPx, cx, cy],
   );
   satsRef.current = sats;
+
+  const observerProj = observer
+    ? projectGeo(observer.lat, observer.lon, 0, rot.lat, rot.lon, earthPx, cx, cy)
+    : null;
 
   const trackPath = useMemo(() => {
     if (selectedTrack.length < 2) return '';
@@ -281,9 +309,25 @@ export function EarthGlobe({
           <Path d={trackPath} fill="none" stroke={colors.gold} strokeWidth={1.4} opacity={0.85} />
         ) : null}
 
+        {observerProj?.front ? (
+          <>
+            <Circle
+              cx={observerProj.x}
+              cy={observerProj.y}
+              r={8}
+              fill="none"
+              stroke={colors.accent}
+              strokeWidth={1.4}
+              opacity={0.85}
+            />
+            <Circle cx={observerProj.x} cy={observerProj.y} r={3.2} fill={colors.accent} />
+          </>
+        ) : null}
+
         {drawnSats.map(({ s, p }) => {
           const selected = s.noradId === selectedId;
-          const r = selected ? 5.5 : s.group === 'stations' ? 4 : 2.6;
+          const overhead = (s.look?.elevationDeg ?? -90) >= HIGH_ELEV_DEG;
+          const r = selected ? 5.5 : overhead ? 4.4 : s.group === 'stations' ? 4 : 2.6;
           return (
             <Circle
               key={s.noradId}
@@ -291,8 +335,8 @@ export function EarthGlobe({
               cy={p.y}
               r={r}
               fill={colors.groups[s.group]}
-              stroke={selected ? '#FFFFFF' : 'rgba(5,7,15,0.6)'}
-              strokeWidth={selected ? 1.6 : 0.6}
+              stroke={selected ? '#FFFFFF' : overhead ? colors.accent : 'rgba(5,7,15,0.6)'}
+              strokeWidth={selected ? 1.6 : overhead ? 1.3 : 0.6}
             />
           );
         })}

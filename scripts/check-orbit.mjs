@@ -2,6 +2,56 @@
 /** Smoke test: fetch public TLE with the same UA/ISS-first policy as the app. */
 import * as satellite from 'satellite.js';
 
+const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+
+function compassFromAzimuth(azDeg) {
+  const wrapped = ((azDeg % 360) + 360) % 360;
+  return CARDINALS[Math.round(wrapped / 45) % 8];
+}
+
+function lookFromGeodetic(sat, observer) {
+  const satEcf = satellite.geodeticToEcf({
+    latitude: satellite.degreesToRadians(sat.lat),
+    longitude: satellite.degreesToRadians(sat.lon),
+    height: sat.altKm,
+  });
+  const observerGd = {
+    latitude: satellite.degreesToRadians(observer.lat),
+    longitude: satellite.degreesToRadians(observer.lon),
+    height: observer.altKm,
+  };
+  const look = satellite.ecfToLookAngles(observerGd, satEcf);
+  return {
+    elevationDeg: satellite.radiansToDegrees(look.elevation),
+    azimuthDeg: ((satellite.radiansToDegrees(look.azimuth) % 360) + 360) % 360,
+    rangeKm: look.rangeSat,
+  };
+}
+
+const roma = { lat: 41.9028, lon: 12.4964, altKm: 0.05 };
+const zenith = lookFromGeodetic({ lat: roma.lat, lon: roma.lon, altKm: 400 }, roma);
+if (Math.abs(zenith.elevationDeg - 90) > 1) {
+  throw new Error(`zenith elevation should be ~90°, got ${zenith.elevationDeg}`);
+}
+const north = lookFromGeodetic({ lat: roma.lat + 5, lon: roma.lon, altKm: 400 }, roma);
+if (north.elevationDeg <= 0 || north.elevationDeg >= 89) {
+  throw new Error(`north-of-Rome elevation implausible: ${north.elevationDeg}`);
+}
+if (compassFromAzimuth(north.azimuthDeg) !== 'N') {
+  throw new Error(`expected N, got ${compassFromAzimuth(north.azimuthDeg)} (az ${north.azimuthDeg})`);
+}
+const farSouth = lookFromGeodetic({ lat: -20, lon: roma.lon, altKm: 400 }, roma);
+if (farSouth.elevationDeg > 0) {
+  throw new Error(`far south should be below horizon, got ${farSouth.elevationDeg}`);
+}
+if (compassFromAzimuth(0) !== 'N' || compassFromAzimuth(90) !== 'E' || compassFromAzimuth(225) !== 'SO') {
+  throw new Error('cardinal mapping is wrong');
+}
+console.log('look angles ok', {
+  zenith: zenith.elevationDeg.toFixed(1),
+  north: `${north.elevationDeg.toFixed(1)}° ${compassFromAzimuth(north.azimuthDeg)}`,
+});
+
 const UA = 'Orbita/1.0 (it.kreluna.orbita; check-orbit; https://github.com/krelunaid/orbita)';
 const ISS_NORAD = 25544;
 const FETCH_MS = 6_000;
@@ -126,7 +176,24 @@ const fallbackPos = propagate(FALLBACK_ISS);
 if (!Number.isFinite(fallbackPos.lat) || !Number.isFinite(fallbackPos.lon) || fallbackPos.altKm < 200 || fallbackPos.altKm > 800) {
   throw new Error(`bundled ISS fallback implausible: ${JSON.stringify(fallbackPos)}`);
 }
-console.log('bundled ISS fallback', fallbackPos);
+const satrec = satellite.twoline2satrec(FALLBACK_ISS.line1, FALLBACK_ISS.line2);
+const now = new Date();
+const pv = satellite.propagate(satrec, now);
+if (!pv.position) throw new Error('ISS fallback has no ECI position');
+const gmst = satellite.gstime(now);
+const issLook = satellite.ecfToLookAngles(
+  {
+    latitude: satellite.degreesToRadians(roma.lat),
+    longitude: satellite.degreesToRadians(roma.lon),
+    height: roma.altKm,
+  },
+  satellite.eciToEcf(pv.position, gmst),
+);
+const issElev = satellite.radiansToDegrees(issLook.elevation);
+if (!Number.isFinite(issElev) || issElev < -90 || issElev > 90) {
+  throw new Error(`ISS look elevation implausible: ${issElev}`);
+}
+console.log('bundled ISS fallback', fallbackPos, 'elev from Rome', `${issElev.toFixed(1)}°`);
 
 const iss = await fetchIss();
 const pos = propagate(iss);

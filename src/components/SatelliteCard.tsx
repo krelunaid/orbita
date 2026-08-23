@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { fmtAlt, fmtLat, fmtLon, fmtPeriod, fmtVel } from '../format';
+import { fmtAlt, fmtElev, fmtLat, fmtLon, fmtPeriod, fmtVel } from '../format';
 import { groupLabel, it } from '../i18n';
+import { compassFromAzimuth } from '../orbit/look';
 import { colors, space } from '../theme';
 import type { SatSnapshot } from '../types';
 
@@ -32,6 +33,8 @@ export function SatelliteCard({ sat, onClose, compact }: Props) {
         ) : null}
       </View>
       <View style={styles.grid}>
+        {sat.look ? <Stat label={it.nelCielo} value={fmtElev(sat.look.elevationDeg)} /> : null}
+        {sat.look ? <Stat label={it.direzione} value={compassFromAzimuth(sat.look.azimuthDeg)} /> : null}
         <Stat label={it.quota} value={fmtAlt(sat.altKm)} />
         <Stat label={it.velocita} value={fmtVel(sat.velocityKmS)} />
         <Stat label={it.latitudine} value={fmtLat(sat.lat)} />

@@ -1,8 +1,10 @@
+import { SymbolView } from 'expo-symbols';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EarthGlobe } from '@/src/components/EarthGlobe';
 import { GroupFilter } from '@/src/components/GroupFilter';
+import { OverheadPanel } from '@/src/components/OverheadPanel';
 import { SatelliteCard } from '@/src/components/SatelliteCard';
 import { fmtWhen } from '@/src/format';
 import { tapLight, tapSelect } from '@/src/haptics';
@@ -16,7 +18,6 @@ export default function GlobeScreen() {
     loading,
     error,
     fetchedAt,
-    source,
     cached,
     selected,
     selectedId,
@@ -27,8 +28,19 @@ export default function GlobeScreen() {
     selectAndFocus,
     focusIss,
     focusToken,
+    focusMode,
     setGlobeBusy,
     refresh,
+    observer,
+    locationStatus,
+    locationCanAskAgain,
+    locationMessage,
+    overheadOpen,
+    overhead,
+    requestMyLocation,
+    useFallbackCity,
+    setOverheadOpen,
+    focusObserver,
   } = useSatellites();
 
   const empty = snapshots.length === 0;
@@ -40,9 +52,8 @@ export default function GlobeScreen() {
         : it.inAttesa
     : [
         `${snapshots.length} ${it.oggetti}`,
-        fetchedAt ? `${it.ultimoAggiornamento} ${fmtWhen(fetchedAt)}` : null,
+        fetchedAt ? fmtWhen(fetchedAt) : null,
         cached ? (snapshots.length === 1 ? it.stimaIss : it.cache) : null,
-        source,
       ]
         .filter(Boolean)
         .join(' · ');
@@ -82,6 +93,8 @@ export default function GlobeScreen() {
           selectedId={selectedId}
           selectedTrack={selectedTrack}
           focusToken={focusToken}
+          focusMode={focusMode}
+          observer={observer}
           onSelect={(id) => {
             if (id) {
               void tapLight();
@@ -92,6 +105,25 @@ export default function GlobeScreen() {
           }}
           onInteract={setGlobeBusy}
         />
+        <Pressable
+          onPress={() => {
+            void tapSelect();
+            if (observer) {
+              if (overheadOpen) focusObserver();
+              else {
+                setOverheadOpen(true);
+                focusObserver();
+              }
+            } else {
+              void requestMyLocation();
+            }
+          }}
+          style={[styles.hereBtn, overheadOpen && styles.hereBtnOn]}
+          accessibilityRole="button"
+          accessibilityLabel={it.centraPosizione}>
+          <SymbolView name="location.fill" tintColor={overheadOpen ? colors.bg : colors.accent} size={16} />
+          <Text style={[styles.hereText, overheadOpen && styles.hereTextOn]}>{it.sopraDiTe}</Text>
+        </Pressable>
         {loading && empty ? (
           <View style={styles.overlay} pointerEvents="none">
             <ActivityIndicator color={colors.accent} />
@@ -132,7 +164,22 @@ export default function GlobeScreen() {
       </View>
 
       <View style={styles.bottom}>
-        {selected ? (
+        {overheadOpen ? (
+          <OverheadPanel
+            observer={observer}
+            status={locationStatus}
+            canAskAgain={locationCanAskAgain}
+            message={locationMessage}
+            overhead={overhead}
+            selectedId={selectedId}
+            onRetry={() => {
+              void requestMyLocation();
+            }}
+            onCity={useFallbackCity}
+            onSelect={selectAndFocus}
+            onClose={() => setOverheadOpen(false)}
+          />
+        ) : selected ? (
           <SatelliteCard sat={selected} compact onClose={() => select(null)} />
         ) : (
           <View>
@@ -173,6 +220,27 @@ const styles = StyleSheet.create({
   },
   refreshText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
   globe: { flex: 1 },
+  hereBtn: {
+    position: 'absolute',
+    right: space.md,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.panelSolid,
+    borderColor: colors.accent,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    zIndex: 2,
+  },
+  hereBtnOn: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  hereText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+  hereTextOn: { color: colors.bg },
   overlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',

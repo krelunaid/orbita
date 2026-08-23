@@ -57,7 +57,10 @@ export default function CatalogScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.head}>
-        <Text style={styles.title}>{it.catalogo}</Text>
+        <View>
+          <Text style={styles.title}>{it.catalogo}</Text>
+          <Text style={styles.hint}>{it.catalogoHint}</Text>
+        </View>
         <Pressable
           onPress={() => {
             void tapSelect();
@@ -181,6 +184,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
   },
+  hint: { color: colors.muted, fontSize: 12, marginTop: 2 },
   issBtn: {
     borderColor: colors.gold,
     borderWidth: 1,

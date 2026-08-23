@@ -1,8 +1,26 @@
 import { GROUP_IDS, type CatalogState, type CelestrakGroup, type GroupId, type TleRecord } from '../types';
+import { ISS_NORAD, isIssRecord, pinIssFirst } from './iss';
 import { dedupeByNorad, isMegaConstellation, parse3le } from './parseTle';
 
 export const MAX_OBJECTS = 280;
-const FETCH_MS = 18_000;
+export { ISS_NORAD, isIssRecord, pinIssFirst };
+
+const FETCH_MS = 8_000;
+const USER_AGENT = 'Orbita/1.0 (it.kreluna.orbita; +https://github.com/krelunaid/orbita)';
+
+let celestrakUnreachable = false;
+
+export function resetTleCircuit(): void {
+  celestrakUnreachable = false;
+}
+
+function isNetworkFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === 'AbortError' ||
+    /fetch failed|network request failed|timeout|aborted|Failed to connect/i.test(err.message)
+  );
+}
 
 const GROUP_BUDGET: Record<CelestrakGroup, number> = {
   stations: 40,
@@ -18,8 +36,36 @@ const CELESTRAK = [
   (g: string) => `https://celestrak.org/NORAD/elements/${g}.txt`,
 ];
 
-const SATNOGS_3LE = 'https://db.satnogs.org/api/tle/?format=3le';
+const ISS_TLE_URLS = [
+  `https://celestrak.org/NORAD/elements/gp.php?CATNR=${ISS_NORAD}&FORMAT=tle`,
+  'https://db.satnogs.org/api/tle/?format=3le&norad_cat_id=25544',
+];
+
+const IVAN_ISS = `https://tle.ivanstanojevic.me/api/tle/${ISS_NORAD}`;
 const IVAN_API = 'https://tle.ivanstanojevic.me/api/tle?page-size=200';
+
+/** Famous objects only — never the full SatNOGS 3LE dump (too large for a phone). */
+const SATNOGS_CURATED = [
+  ISS_NORAD,
+  48274, // CSS Tianhe
+  20580, // Hubble
+  50463, // JWST
+  43013, // TESS
+  27424, // Aqua
+  25994, // Terra
+  28654, // NOAA 18
+  33591, // NOAA 19
+  43226, // NOAA 20
+  41866, // GOES 16
+  25338, // NOAA 15
+  37846, // Galileo
+  36585, // GPS
+];
+
+function looksLikeHtml(text: string): boolean {
+  const head = text.slice(0, 80).trim().toLowerCase();
+  return head.startsWith('<!doctype') || head.startsWith('<html');
+}
 
 async function readText(url: string): Promise<string> {
   const ctrl = new AbortController();
@@ -29,16 +75,22 @@ async function readText(url: string): Promise<string> {
       signal: ctrl.signal,
       headers: {
         Accept: 'text/plain, application/json;q=0.9, */*;q=0.5',
+        'User-Agent': USER_AGENT,
+        'Cache-Control': 'no-cache',
       },
     });
     if (!res.ok) throw new Error(`${url} → ${res.status}`);
-    return await res.text();
+    const text = await res.text();
+    if (!text.trim()) throw new Error(`${url} → vuoto`);
+    if (looksLikeHtml(text)) throw new Error(`${url} → HTML invece di TLE`);
+    return text;
   } finally {
     clearTimeout(timer);
   }
 }
 
 async function fetchCelestrakGroup(group: CelestrakGroup): Promise<TleRecord[]> {
+  if (celestrakUnreachable) throw new Error('CelesTrak irraggiungibile');
   let last: unknown;
   for (const build of CELESTRAK) {
     try {
@@ -47,6 +99,10 @@ async function fetchCelestrakGroup(group: CelestrakGroup): Promise<TleRecord[]> 
       if (parsed.length > 0) return parsed;
     } catch (err) {
       last = err;
+      if (isNetworkFailure(err)) {
+        celestrakUnreachable = true;
+        break;
+      }
     }
   }
   throw last instanceof Error ? last : new Error(`CelesTrak ${group} vuoto`);
@@ -71,9 +127,13 @@ type IvanMember = {
   line2?: string;
 };
 
-function parseIvan(jsonText: string): TleRecord[] {
-  const data = JSON.parse(jsonText) as { member?: IvanMember[] };
-  const members = Array.isArray(data.member) ? data.member : [];
+function parseIvanPayload(jsonText: string): TleRecord[] {
+  const data = JSON.parse(jsonText) as { member?: IvanMember[] } & IvanMember;
+  const members: IvanMember[] = Array.isArray(data.member)
+    ? data.member
+    : data.line1 && data.line2
+      ? [data]
+      : [];
   const out: TleRecord[] = [];
   for (const m of members) {
     if (!m.line1 || !m.line2 || !m.name) continue;
@@ -92,20 +152,36 @@ function parseIvan(jsonText: string): TleRecord[] {
   return out;
 }
 
-async function fetchSatnogs(): Promise<TleRecord[]> {
-  const text = await readText(SATNOGS_3LE);
-  return parse3le(text, 'satnogs', 'altro').map((r) => ({
-    ...r,
-    group: guessGroup(r.name),
-  }));
+async function fetchIvanUrl(url: string): Promise<TleRecord[]> {
+  return parseIvanPayload(await readText(url));
 }
 
-async function fetchIvan(): Promise<TleRecord[]> {
-  return parseIvan(await readText(IVAN_API));
+async function mapPool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    const chunk = items.slice(i, i + size);
+    out.push(...(await Promise.all(chunk.map(fn))));
+  }
+  return out;
+}
+
+async function fetchSatnogsCurated(): Promise<TleRecord[]> {
+  const batches = await mapPool(SATNOGS_CURATED, 4, async (norad) => {
+    try {
+      const text = await readText(`https://db.satnogs.org/api/tle/?format=3le&norad_cat_id=${norad}`);
+      return parse3le(text, 'satnogs', 'altro').map((r) => ({
+        ...r,
+        group: guessGroup(r.name),
+      }));
+    } catch {
+      return [] as TleRecord[];
+    }
+  });
+  return batches.flat();
 }
 
 export function capCatalog(records: TleRecord[], max = MAX_OBJECTS): TleRecord[] {
-  const unique = dedupeByNorad(records).filter((r) => !isMegaConstellation(r.name));
+  const unique = pinIssFirst(dedupeByNorad(records).filter((r) => !isMegaConstellation(r.name)));
   const buckets = new Map<GroupId, TleRecord[]>();
   for (const rec of unique) {
     const list = buckets.get(rec.group) ?? [];
@@ -129,59 +205,89 @@ export function capCatalog(records: TleRecord[], max = MAX_OBJECTS): TleRecord[]
   if (picked.length < max) {
     take('altro', max - picked.length);
   }
-  return dedupeByNorad(picked).slice(0, max);
+  return pinIssFirst(dedupeByNorad(picked)).slice(0, max);
 }
 
-export async function loadPublicTle(): Promise<CatalogState> {
-  const collected: TleRecord[] = [];
+export async function fetchIssRecord(): Promise<TleRecord | null> {
+  for (const url of ISS_TLE_URLS) {
+    try {
+      const parsed = parse3le(await readText(url), url.includes('satnogs') ? 'satnogs' : 'celestrak', 'stations');
+      const iss = parsed.find(isIssRecord);
+      if (iss) return { ...iss, group: 'stations' };
+    } catch (err) {
+      if (url.includes('celestrak') && isNetworkFailure(err)) {
+        celestrakUnreachable = true;
+      }
+    }
+  }
+  try {
+    const ivan = (await fetchIvanUrl(IVAN_ISS)).find(isIssRecord);
+    if (ivan) return { ...ivan, group: 'stations' };
+  } catch {
+    // last source failed
+  }
+  return null;
+}
+
+function catalogFrom(records: TleRecord[], source: CatalogState['source']): CatalogState {
+  return {
+    records: capCatalog(records),
+    fetchedAt: Date.now(),
+    source,
+    cached: false,
+  };
+}
+
+export async function loadPublicTle(seed: TleRecord[] = []): Promise<CatalogState> {
+  const collected: TleRecord[] = [...seed];
   const errors: string[] = [];
 
-  await Promise.all(
-    GROUP_IDS.map(async (group) => {
+  if (!collected.some(isIssRecord)) {
+    const iss = await fetchIssRecord();
+    if (iss) collected.push(iss);
+  }
+
+  const alreadyHaveCelestrak = collected.some((r) => r.source === 'celestrak');
+  if (alreadyHaveCelestrak || !celestrakUnreachable) {
+    const groupResults = await mapPool([...GROUP_IDS], 2, async (group) => {
       try {
-        const rows = await fetchCelestrakGroup(group);
-        collected.push(...rows);
+        return await fetchCelestrakGroup(group);
       } catch (err) {
         errors.push(`${group}: ${err instanceof Error ? err.message : 'errore'}`);
+        return [] as TleRecord[];
       }
-    }),
-  );
+    });
+    collected.push(...groupResults.flat());
+  }
 
+  if (collected.length >= 20 && collected.some(isIssRecord)) {
+    return catalogFrom(collected, 'celestrak');
+  }
   if (collected.length >= 20) {
-    return {
-      records: capCatalog(collected),
-      fetchedAt: Date.now(),
-      source: 'celestrak',
-      cached: false,
-    };
+    return catalogFrom(collected, 'celestrak');
   }
 
   try {
-    const satnogs = await fetchSatnogs();
+    const satnogs = await fetchSatnogsCurated();
     if (satnogs.length > 0) {
-      return {
-        records: capCatalog(satnogs),
-        fetchedAt: Date.now(),
-        source: 'satnogs',
-        cached: false,
-      };
+      return catalogFrom([...collected, ...satnogs], 'satnogs');
     }
   } catch (err) {
     errors.push(`satnogs: ${err instanceof Error ? err.message : 'errore'}`);
   }
 
   try {
-    const ivan = await fetchIvan();
-    if (ivan.length > 0) {
-      return {
-        records: capCatalog(ivan),
-        fetchedAt: Date.now(),
-        source: 'ivanstanojevic',
-        cached: false,
-      };
+    const ivan = await fetchIvanUrl(IVAN_API);
+    const merged = [...collected, ...ivan];
+    if (merged.length > 0) {
+      return catalogFrom(merged, 'ivanstanojevic');
     }
   } catch (err) {
     errors.push(`ivan: ${err instanceof Error ? err.message : 'errore'}`);
+  }
+
+  if (collected.length > 0) {
+    return catalogFrom(collected, collected[0].source);
   }
 
   throw new Error(errors.join(' · ') || 'Nessuna fonte TLE disponibile');

@@ -45,7 +45,7 @@ export default function AboutScreen() {
           <Text style={styles.body}>{it.aboutPrivacyBody}</Text>
         </Section>
 
-        <Text style={styles.meta}>{it.expoGoHint}</Text>
+        <Text style={styles.meta}>{it.howToOpen}</Text>
         <Text style={styles.bundle}>it.kreluna.orbita</Text>
       </ScrollView>
     </SafeAreaView>

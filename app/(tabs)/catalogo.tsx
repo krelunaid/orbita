@@ -1,17 +1,32 @@
 import { useRouter } from 'expo-router';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GroupFilter } from '@/src/components/GroupFilter';
 import { fmtAlt, fmtLat } from '@/src/format';
+import { tapSelect } from '@/src/haptics';
 import { groupLabel, it } from '@/src/i18n';
+import { isIssRecord } from '@/src/orbit/iss';
 import { useSatellites } from '@/src/state/SatellitesContext';
 import { colors, space } from '@/src/theme';
 import type { SatSnapshot } from '@/src/types';
 
 export default function CatalogScreen() {
   const router = useRouter();
-  const { snapshots, query, setQuery, enabledGroups, toggleGroup, select } = useSatellites();
+  const { snapshots, query, setQuery, enabledGroups, toggleGroup, select, loading, error, refresh } =
+    useSatellites();
+
+  const rows = useMemo(
+    () =>
+      [...snapshots].sort((a, b) => {
+        const ai = isIssRecord(a) ? 0 : 1;
+        const bi = isIssRecord(b) ? 0 : 1;
+        if (ai !== bi) return ai - bi;
+        return a.name.localeCompare(b.name, 'it');
+      }),
+    [snapshots],
+  );
 
   const open = (sat: SatSnapshot) => {
     select(sat.noradId);
@@ -34,11 +49,33 @@ export default function CatalogScreen() {
         <GroupFilter enabled={enabledGroups} onToggle={toggleGroup} />
       </View>
       <FlatList
-        data={snapshots}
+        data={rows}
         keyExtractor={(item) => String(item.noradId)}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={<Text style={styles.empty}>{it.nessuno}</Text>}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyBox}>
+              <ActivityIndicator color={colors.accent} />
+              <Text style={styles.empty}>{it.caricamento}</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyErr}>{it.erroreRete}</Text>
+              <Text style={styles.empty}>{error}</Text>
+              <Pressable
+                onPress={() => {
+                  void tapSelect();
+                  void refresh(true);
+                }}
+                style={styles.retry}>
+                <Text style={styles.retryText}>{it.riprova}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={styles.empty}>{it.nessuno}</Text>
+          )
+        }
         renderItem={({ item }) => (
           <Pressable onPress={() => open(item)} style={styles.row}>
             <View style={[styles.dot, { backgroundColor: colors.groups[item.group] }]} />
@@ -91,4 +128,14 @@ const styles = StyleSheet.create({
   name: { color: colors.text, fontSize: 15, fontWeight: '600' },
   meta: { color: colors.muted, fontSize: 12, marginTop: 2, fontFamily: 'SpaceMono' },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 32 },
+  emptyErr: { color: colors.danger, textAlign: 'center', fontSize: 14 },
+  emptyBox: { paddingTop: 32, gap: 10, alignItems: 'center' },
+  retry: {
+    borderColor: colors.accent,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  retryText: { color: colors.accent, fontSize: 14, fontWeight: '700' },
 });

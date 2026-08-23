@@ -49,7 +49,7 @@
           "locationWhenInUsePermission": "Orbita usa la tua posizione solo per mostrare quali satelliti passano sopra di te in questo momento.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
-          "motionUsagePermission": false,
+          "motionUsagePermission": "Orbita non traccia i tuoi movimenti. iOS richiede questa descrizione perché la posizione può usare i sensori di movimento.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }

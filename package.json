@@ -13,6 +13,7 @@
     "android": "expo start --android",
     "typecheck": "tsc --noEmit",
     "check:orbit": "node scripts/check-orbit.mjs",
+    "check:layout": "node scripts/check-layout.mjs",
     "eas:preview": "eas build --platform ios --profile preview",
     "eas:production": "eas build --platform ios --profile production"
   },

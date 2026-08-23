@@ -16,6 +16,7 @@ type Props = {
   message: string | null;
   overhead: OverheadPick;
   selectedId: number | null;
+  maxHeight?: number;
   onRetry: () => void;
   onCity: (cityId: string) => void;
   onSelect: (noradId: number) => void;
@@ -29,6 +30,7 @@ export function OverheadPanel({
   message,
   overhead,
   selectedId,
+  maxHeight,
   onRetry,
   onCity,
   onSelect,
@@ -42,84 +44,96 @@ export function OverheadPanel({
     : status === 'requesting'
       ? it.posizioneInCorso
       : null;
+  const bodyMax = maxHeight != null ? Math.max(88, maxHeight - 56) : undefined;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, maxHeight != null ? { maxHeight } : null]}>
       <View style={styles.head}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{it.sopraDiTe}</Text>
-          {subtitle ? <Text style={styles.sub}>{subtitle}</Text> : null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.title} numberOfLines={1}>
+            {it.sopraDiTe}
+          </Text>
+          {subtitle ? (
+            <Text style={styles.sub} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
         <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Chiudi">
           <Text style={styles.close}>✕</Text>
         </Pressable>
       </View>
 
-      {status === 'requesting' && !observer ? (
-        <View style={styles.rowCenter}>
-          <ActivityIndicator color={colors.accent} size="small" />
-          <Text style={styles.hint}>{it.posizioneInCorso}</Text>
-        </View>
-      ) : null}
-
-      {message && (status === 'denied' || status === 'error') ? (
-        <Text style={styles.warn}>{message}</Text>
-      ) : null}
-
-      {status === 'denied' || status === 'error' || observer?.kind === 'city' ? (
-        <View style={styles.actions}>
-          <Pressable
-            onPress={() => {
-              void tapSelect();
-              if (!canAskAgain && status === 'denied') {
-                void Linking.openSettings();
-              } else {
-                onRetry();
-              }
-            }}
-            style={styles.actionBtn}
-            accessibilityRole="button">
-            <Text style={styles.actionText}>
-              {!canAskAgain && status === 'denied' ? it.apriImpostazioni : it.riprovaPosizione}
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {showCities ? (
-        <View>
-          <Text style={styles.cityLabel}>{it.usaCitta}</Text>
-          <View style={styles.cities}>
-            {FALLBACK_CITIES.map((city) => {
-              const active = observer?.kind === 'city' && observer.label === city.name;
-              return (
-                <Pressable
-                  key={city.id}
-                  onPress={() => {
-                    void tapLight();
-                    onCity(city.id);
-                  }}
-                  style={[styles.city, active && styles.cityOn]}
-                  accessibilityRole="button"
-                  accessibilityLabel={city.name}>
-                  <Text style={[styles.cityText, active && styles.cityTextOn]}>{city.name}</Text>
-                </Pressable>
-              );
-            })}
+      <ScrollView
+        style={[styles.body, bodyMax != null ? { maxHeight: bodyMax } : null]}
+        contentContainerStyle={styles.bodyContent}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
+        {status === 'requesting' && !observer ? (
+          <View style={styles.rowCenter}>
+            <ActivityIndicator color={colors.accent} size="small" />
+            <Text style={styles.hint}>{it.posizioneInCorso}</Text>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      {observer ? (
-        <View>
-          {overhead.mode === 'best' ? <Text style={styles.hint}>{it.nessunoAlto}</Text> : null}
-          {overhead.mode === 'empty' ? <Text style={styles.hint}>{it.nessunoOrizzonte}</Text> : null}
-          {overhead.mode === 'high' ? (
-            <Text style={styles.hint}>
-              {overhead.items.length} {it.oggetti} · {it.nelCielo} ≥ {HIGH_ELEV_DEG}°
-            </Text>
-          ) : null}
-          <ScrollView style={styles.list} nestedScrollEnabled>
+        {message && (status === 'denied' || status === 'error') ? (
+          <Text style={styles.warn}>{message}</Text>
+        ) : null}
+
+        {status === 'denied' || status === 'error' || observer?.kind === 'city' ? (
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() => {
+                void tapSelect();
+                if (!canAskAgain && status === 'denied') {
+                  void Linking.openSettings();
+                } else {
+                  onRetry();
+                }
+              }}
+              style={styles.actionBtn}
+              accessibilityRole="button">
+              <Text style={styles.actionText} numberOfLines={1}>
+                {!canAskAgain && status === 'denied' ? it.apriImpostazioni : it.riprovaPosizione}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {showCities ? (
+          <View>
+            <Text style={styles.cityLabel}>{it.usaCitta}</Text>
+            <View style={styles.cities}>
+              {FALLBACK_CITIES.map((city) => {
+                const active = observer?.kind === 'city' && observer.label === city.name;
+                return (
+                  <Pressable
+                    key={city.id}
+                    onPress={() => {
+                      void tapLight();
+                      onCity(city.id);
+                    }}
+                    style={[styles.city, active && styles.cityOn]}
+                    accessibilityRole="button"
+                    accessibilityLabel={city.name}>
+                    <Text style={[styles.cityText, active && styles.cityTextOn]}>{city.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {observer ? (
+          <View>
+            {overhead.mode === 'best' ? <Text style={styles.hint}>{it.nessunoAlto}</Text> : null}
+            {overhead.mode === 'empty' ? <Text style={styles.hint}>{it.nessunoOrizzonte}</Text> : null}
+            {overhead.mode === 'high' ? (
+              <Text style={styles.hint}>
+                {overhead.items.length} {it.oggetti} · {it.nelCielo} ≥ {HIGH_ELEV_DEG}°
+              </Text>
+            ) : null}
             {overhead.items.map((sat) => (
               <OverheadRow
                 key={sat.noradId}
@@ -128,9 +142,9 @@ export function OverheadPanel({
                 onPress={() => onSelect(sat.noradId)}
               />
             ))}
-          </ScrollView>
-        </View>
-      ) : null}
+          </View>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
@@ -159,10 +173,12 @@ function OverheadRow({
       <Text style={styles.satName} numberOfLines={1}>
         {sat.name}
       </Text>
-      <Text style={styles.satLook}>
+      <Text style={styles.satLook} numberOfLines={1}>
         {elev} · {dir}
       </Text>
-      <Text style={styles.satGroup}>{groupLabel(sat.group)}</Text>
+      <Text style={styles.satGroup} numberOfLines={1}>
+        {groupLabel(sat.group)}
+      </Text>
     </Pressable>
   );
 }
@@ -175,15 +191,19 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
     gap: 8,
+    minHeight: 0,
+    overflow: 'hidden',
   },
-  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, flexShrink: 0 },
   title: { color: colors.text, fontSize: 16, fontWeight: '800' },
   sub: { color: colors.muted, fontSize: 12, marginTop: 2 },
   close: { color: colors.muted, fontSize: 16, paddingHorizontal: 4 },
+  body: { flexGrow: 0, minHeight: 0 },
+  bodyContent: { gap: 8, paddingBottom: 4 },
   hint: { color: colors.muted, fontSize: 12 },
   warn: { color: colors.danger, fontSize: 13, lineHeight: 18 },
   rowCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  actions: { flexDirection: 'row', gap: 8 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionBtn: {
     borderColor: colors.accent,
     borderWidth: 1,
@@ -204,7 +224,6 @@ const styles = StyleSheet.create({
   cityOn: { borderColor: colors.accent, backgroundColor: '#121A2C' },
   cityText: { color: colors.muted, fontSize: 13, fontWeight: '600' },
   cityTextOn: { color: colors.text },
-  list: { maxHeight: 168 },
   satRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -214,8 +233,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   satRowOn: { backgroundColor: '#121A2C', marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 8 },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  satName: { color: colors.text, fontSize: 14, fontWeight: '600', flex: 1 },
-  satLook: { color: colors.gold, fontSize: 13, fontWeight: '700', fontFamily: 'SpaceMono' },
-  satGroup: { color: colors.dim, fontSize: 11, width: 58, textAlign: 'right' },
+  dot: { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
+  satName: { color: colors.text, fontSize: 14, fontWeight: '600', flex: 1, minWidth: 0 },
+  satLook: { color: colors.gold, fontSize: 13, fontWeight: '700', fontFamily: 'SpaceMono', flexShrink: 0 },
+  satGroup: { color: colors.dim, fontSize: 11, width: 64, textAlign: 'right', flexShrink: 0 },
 });

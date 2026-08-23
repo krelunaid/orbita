@@ -101,8 +101,12 @@ export default function AboutScreen() {
 function StatusCell({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.cell}>
-      <Text style={styles.cellLabel}>{label}</Text>
-      <Text style={styles.cellValue}>{value}</Text>
+      <Text style={styles.cellLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={styles.cellValue} numberOfLines={2}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -118,7 +122,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: space.md, paddingBottom: 48, gap: 8 },
+  content: { padding: space.md, paddingBottom: 56, gap: 8 },
   kicker: { color: colors.accent, fontSize: 13, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' },
   title: { color: colors.text, fontSize: 28, fontWeight: '800', marginBottom: 2 },
   tagline: { color: colors.gold, fontSize: 15, fontWeight: '600', marginBottom: 6 },
@@ -130,6 +134,7 @@ const styles = StyleSheet.create({
   },
   cell: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: colors.panelSolid,
     borderColor: colors.line,
     borderWidth: 1,

@@ -14,7 +14,11 @@ type Props = {
 
 export function GroupFilter({ enabled, onToggle }: Props) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.scroller}
+      contentContainerStyle={styles.row}>
       {CHIPS.map((g) => {
         const on = enabled.includes(g);
         return (
@@ -35,9 +39,11 @@ export function GroupFilter({ enabled, onToggle }: Props) {
 }
 
 const styles = StyleSheet.create({
+  scroller: { flexGrow: 0, flexShrink: 0 },
   row: {
     gap: 8,
     paddingHorizontal: space.md,
+    paddingVertical: 4,
     alignItems: 'center',
   },
   chip: {

@@ -3,6 +3,7 @@ import { LayoutChangeEvent, PanResponder, StyleSheet, View } from 'react-native'
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import { LAND_RINGS } from '../data/landmasses';
+import { fitEarthRadius } from '../layout';
 import { HIGH_ELEV_DEG } from '../orbit/look';
 import { clamp, pathFromRing, projectGeo } from '../orbit/project';
 import { subsolarPoint } from '../orbit/propagate';
@@ -37,7 +38,7 @@ export function EarthGlobe({
   onSelect,
   onInteract,
 }: Props) {
-  const [size, setSize] = useState({ w: 360, h: 420 });
+  const [size, setSize] = useState({ w: 0, h: 0 });
   const [rot, setRot] = useState({ lat: 18, lon: 12 });
   const [scale, setScale] = useState(1);
   const [dragging, setDragging] = useState(false);
@@ -155,8 +156,8 @@ export function EarthGlobe({
   };
 
   const cx = size.w / 2;
-  const cy = size.h / 2 + 6;
-  const earthPx = Math.min(size.w, size.h) * 0.36 * scale;
+  const cy = size.h / 2;
+  const earthPx = fitEarthRadius(size.w, size.h, scale);
 
   const land = useMemo(
     () =>
@@ -269,9 +270,12 @@ export function EarthGlobe({
       )
     : sats.filter(({ p }) => p.front);
 
+  const ready = size.w > 8 && size.h > 8;
+
   return (
     <View style={styles.fill} onLayout={onLayout} {...responder.panHandlers}>
-      <Svg width={size.w} height={size.h}>
+      {ready ? (
+        <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill}>
         <Defs>
           <RadialGradient id="ocean" cx={`${(lightX / size.w) * 100}%`} cy={`${(lightY / size.h) * 100}%`} r="55%">
             <Stop offset="0%" stopColor="#1A4B7A" />
@@ -340,11 +344,12 @@ export function EarthGlobe({
             />
           );
         })}
-      </Svg>
+        </Svg>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: colors.bg },
+  fill: { flex: 1, minHeight: 0, overflow: 'visible', backgroundColor: colors.bg },
 });

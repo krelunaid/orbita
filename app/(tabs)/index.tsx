@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EarthGlobe } from '@/src/components/EarthGlobe';
 import { GroupFilter } from '@/src/components/GroupFilter';
@@ -9,6 +9,7 @@ import { SatelliteCard } from '@/src/components/SatelliteCard';
 import { fmtWhen } from '@/src/format';
 import { tapLight, tapSelect } from '@/src/haptics';
 import { it } from '@/src/i18n';
+import { globeSheetBudget } from '@/src/layout';
 import { useSatellites } from '@/src/state/SatellitesContext';
 import { colors, space } from '@/src/theme';
 
@@ -58,34 +59,46 @@ export default function GlobeScreen() {
         .filter(Boolean)
         .join(' · ');
 
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { sheetMax } = globeSheetBudget(windowHeight, insets.top, insets.bottom);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.top}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.brand}>{it.appName}</Text>
-          <Text style={styles.sub}>{statusLine}</Text>
+        <View style={styles.brandWrap}>
+          <Text style={styles.brand} numberOfLines={1}>
+            {it.appName}
+          </Text>
+          <Text style={styles.sub} numberOfLines={1}>
+            {statusLine}
+          </Text>
         </View>
-        <Pressable
-          onPress={() => {
-            void tapSelect();
-            focusIss();
-          }}
-          style={styles.issBtn}
-          accessibilityRole="button"
-          accessibilityLabel={it.centraIss}>
-          <Text style={styles.issText}>{it.vaiIss}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            void tapSelect();
-            void refresh(true);
-          }}
-          style={styles.refresh}>
-          <Text style={styles.refreshText}>{it.aggiorna}</Text>
-        </Pressable>
+        <View style={styles.topActions}>
+          <Pressable
+            onPress={() => {
+              void tapSelect();
+              focusIss();
+            }}
+            style={styles.issBtn}
+            accessibilityRole="button"
+            accessibilityLabel={it.centraIss}>
+            <Text style={styles.issText}>{it.vaiIss}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              void tapSelect();
+              void refresh(true);
+            }}
+            style={styles.refresh}>
+            <Text style={styles.refreshText}>{it.aggiorna}</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <GroupFilter enabled={enabledGroups} onToggle={toggleGroup} />
+      <View style={styles.filters}>
+        <GroupFilter enabled={enabledGroups} onToggle={toggleGroup} />
+      </View>
 
       <View style={styles.globe}>
         <EarthGlobe
@@ -122,7 +135,9 @@ export default function GlobeScreen() {
           accessibilityRole="button"
           accessibilityLabel={it.centraPosizione}>
           <SymbolView name="location.fill" tintColor={overheadOpen ? colors.bg : colors.accent} size={16} />
-          <Text style={[styles.hereText, overheadOpen && styles.hereTextOn]}>{it.sopraDiTe}</Text>
+          <Text style={[styles.hereText, overheadOpen && styles.hereTextOn]} numberOfLines={1}>
+            {it.sopraDiTe}
+          </Text>
         </Pressable>
         {loading && empty ? (
           <View style={styles.overlay} pointerEvents="none">
@@ -163,9 +178,10 @@ export default function GlobeScreen() {
         ) : null}
       </View>
 
-      <View style={styles.bottom}>
+      <View style={[styles.bottom, { maxHeight: sheetMax }]}>
         {overheadOpen ? (
           <OverheadPanel
+            maxHeight={sheetMax - 16}
             observer={observer}
             status={locationStatus}
             canAskAgain={locationCanAskAgain}
@@ -193,16 +209,20 @@ export default function GlobeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, minHeight: 0, backgroundColor: colors.bg },
   top: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: space.md,
     paddingBottom: 8,
     gap: 8,
+    flexGrow: 0,
+    flexShrink: 0,
   },
+  brandWrap: { flex: 1, minWidth: 0 },
   brand: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: 0.4 },
   sub: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  topActions: { flexDirection: 'row', flexShrink: 0, gap: 8, alignItems: 'center' },
   issBtn: {
     borderColor: colors.gold,
     borderWidth: 1,
@@ -219,11 +239,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   refreshText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
-  globe: { flex: 1 },
+  filters: { flexGrow: 0, flexShrink: 0 },
+  globe: { flex: 1, minHeight: 0, overflow: 'visible' },
   hereBtn: {
     position: 'absolute',
     right: space.md,
-    bottom: 12,
+    top: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -234,12 +255,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     zIndex: 2,
+    maxWidth: '72%',
   },
   hereBtnOn: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
   },
-  hereText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+  hereText: { color: colors.accent, fontSize: 13, fontWeight: '700', flexShrink: 1 },
   hereTextOn: { color: colors.bg },
   overlay: {
     ...StyleSheet.absoluteFill,
@@ -265,7 +287,15 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   bannerText: { color: colors.muted, fontSize: 12, flex: 1 },
-  bottom: { paddingHorizontal: space.md, paddingBottom: 10, paddingTop: 6, minHeight: 48 },
+  bottom: {
+    paddingHorizontal: space.md,
+    paddingBottom: 10,
+    paddingTop: 6,
+    minHeight: 48,
+    flexGrow: 0,
+    flexShrink: 1,
+    overflow: 'visible',
+  },
   hint: { color: colors.muted, textAlign: 'center', fontSize: 13 },
   hintSub: { color: colors.dim, textAlign: 'center', fontSize: 12, marginTop: 4 },
   err: { color: colors.danger, textAlign: 'center', fontSize: 14 },

@@ -57,9 +57,13 @@ export default function CatalogScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.head}>
-        <View>
-          <Text style={styles.title}>{it.catalogo}</Text>
-          <Text style={styles.hint}>{it.catalogoHint}</Text>
+        <View style={styles.headText}>
+          <Text style={styles.title} numberOfLines={1}>
+            {it.catalogo}
+          </Text>
+          <Text style={styles.hint} numberOfLines={2}>
+            {it.catalogoHint}
+          </Text>
         </View>
         <Pressable
           onPress={() => {
@@ -178,7 +182,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: space.md,
     paddingBottom: 8,
+    gap: 8,
   },
+  headText: { flex: 1, minWidth: 0 },
   title: {
     color: colors.text,
     fontSize: 28,
@@ -223,7 +229,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     marginBottom: 8,
   },
-  list: { paddingHorizontal: space.md, paddingBottom: 24 },
+  list: { paddingHorizontal: space.md, paddingBottom: 32 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

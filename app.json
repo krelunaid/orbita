@@ -15,7 +15,8 @@
       "infoPlist": {
         "CFBundleDisplayName": "Orbita",
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocationWhenInUseUsageDescription": "Orbita usa la tua posizione solo per mostrare quali satelliti passano sopra di te in questo momento."
+        "NSLocationWhenInUseUsageDescription": "Orbita usa la tua posizione solo per mostrare quali satelliti passano sopra di te in questo momento.",
+        "NSMotionUsageDescription": "Orbita non traccia i tuoi movimenti. iOS richiede questa descrizione perché la posizione può usare i sensori di movimento."
       },
       "config": {
         "usesNonExemptEncryption": false
